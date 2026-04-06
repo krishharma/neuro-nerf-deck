@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neuro-NeRF — Presidential AI Challenge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+</head>
+<body>
+
+<!-- ── SLIDE CONTAINER ────────────────────────────────────────── -->
+<div class="deck" id="deck">
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 1 — TITLE
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--title active" data-slide="1">
+    <!-- Animated background canvas -->
+    <canvas class="bg-canvas" id="titleCanvas"></canvas>
+
+    <!-- HUD corner decorations -->
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <!-- Drone silhouette SVG -->
+    <div class="drone-silhouette">
+      <svg viewBox="0 0 320 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Drone body -->
+        <rect x="135" y="82" width="50" height="16" rx="4" fill="rgba(0,208,220,0.12)" stroke="rgba(0,208,220,0.5)" stroke-width="1"/>
+        <!-- Center hub -->
+        <circle cx="160" cy="90" r="8" fill="rgba(0,208,220,0.15)" stroke="rgba(0,208,220,0.7)" stroke-width="1.5"/>
+        <!-- Arms -->
+        <line x1="160" y1="90" x2="90" y2="60" stroke="rgba(0,208,220,0.35)" stroke-width="1.5"/>
+        <line x1="160" y1="90" x2="230" y2="60" stroke="rgba(0,208,220,0.35)" stroke-width="1.5"/>
+        <line x1="160" y1="90" x2="90" y2="120" stroke="rgba(0,208,220,0.35)" stroke-width="1.5"/>
+        <line x1="160" y1="90" x2="230" y2="120" stroke="rgba(0,208,220,0.35)" stroke-width="1.5"/>
+        <!-- Propellers -->
+        <ellipse cx="90" cy="60" rx="20" ry="5" fill="rgba(0,208,220,0.08)" stroke="rgba(0,208,220,0.5)" stroke-width="1"/>
+        <ellipse cx="230" cy="60" rx="20" ry="5" fill="rgba(0,208,220,0.08)" stroke="rgba(0,208,220,0.5)" stroke-width="1"/>
+        <ellipse cx="90" cy="120" rx="20" ry="5" fill="rgba(0,208,220,0.08)" stroke="rgba(0,208,220,0.5)" stroke-width="1"/>
+        <ellipse cx="230" cy="120" rx="20" ry="5" fill="rgba(0,208,220,0.08)" stroke="rgba(0,208,220,0.5)" stroke-width="1"/>
+        <!-- Scan ring -->
+        <circle cx="160" cy="90" r="50" stroke="rgba(0,208,220,0.1)" stroke-width="0.5" stroke-dasharray="4 8"/>
+        <circle cx="160" cy="90" r="70" stroke="rgba(0,208,220,0.06)" stroke-width="0.5" stroke-dasharray="2 12"/>
+        <!-- Glowing dot -->
+        <circle cx="160" cy="90" r="3" fill="#00D0DC"/>
+      </svg>
+    </div>
+
+    <!-- Wireframe grid overlay -->
+    <div class="wireframe-overlay"></div>
+
+    <div class="slide-content title-content">
+      <div class="title-eyebrow">Presidential AI Challenge · Regional Interview</div>
+      <h1 class="title-hero">
+        <span class="title-neuro">Neuro</span><span class="title-dash">‑</span><span class="title-nerf">NeRF</span>
+      </h1>
+      <p class="title-subtitle">A Brain‑Inspired Rescue Drone Navigation System</p>
+      <div class="title-divider"></div>
+      <p class="title-tagline">"When every second matters, responders need safer ways to see, decide, and save lives."</p>
+      <div class="title-author">Kiaan Sharma</div>
+    </div>
+
+    <!-- Pulse ring at bottom -->
+    <div class="pulse-ring"></div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 2 — URGENCY / PROBLEM
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--urgency" data-slide="2">
+    <canvas class="bg-canvas" id="urgencyCanvas"></canvas>
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <div class="slide-label">01 / THE PROBLEM</div>
+
+    <div class="slide-content urgency-content">
+      <h2 class="section-title">When Rescue Becomes <em>Too Dangerous</em></h2>
+
+      <div class="stats-grid">
+        <div class="stat-block" data-reveal="0">
+          <div class="stat-accent-line"></div>
+          <div class="stat-number" data-target="27">0</div>
+          <div class="stat-unit">Billion-dollar<br>disasters in 2024</div>
+          <div class="stat-source">NOAA Climate Data</div>
+        </div>
+        <div class="stat-block" data-reveal="1">
+          <div class="stat-accent-line orange"></div>
+          <div class="stat-number orange" data-target="53000">0</div>
+          <div class="stat-unit">Firefighter injuries<br>in the U.S. (2024)</div>
+          <div class="stat-source">NFPA Annual Report</div>
+        </div>
+        <div class="stat-block" data-reveal="2">
+          <div class="stat-accent-line red"></div>
+          <div class="stat-number red" data-prefix="$" data-target="182.7" data-suffix="B">0</div>
+          <div class="stat-unit">In disaster damage<br>and economic loss</div>
+          <div class="stat-source">NOAA 2024 Summary</div>
+        </div>
+      </div>
+
+      <div class="urgency-message" data-reveal="3">
+        <div class="urgency-bar"></div>
+        <p>Many disaster zones are too unstable, cluttered, or dangerous for humans to immediately access safely.<br>
+        <strong>Every minute without situational awareness increases danger for survivors and responders.</strong></p>
+      </div>
+    </div>
+
+    <!-- Side visual: collapsing structure motif -->
+    <div class="danger-motif">
+      <svg viewBox="0 0 200 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="20" y1="0" x2="40" y2="400" stroke="rgba(255,80,60,0.08)" stroke-width="20"/>
+        <line x1="60" y1="100" x2="70" y2="400" stroke="rgba(255,80,60,0.06)" stroke-width="12"/>
+        <line x1="100" y1="50" x2="110" y2="400" stroke="rgba(255,80,60,0.04)" stroke-width="30"/>
+        <line x1="140" y1="0" x2="135" y2="400" stroke="rgba(255,80,60,0.07)" stroke-width="15"/>
+        <line x1="180" y1="80" x2="170" y2="400" stroke="rgba(255,80,60,0.05)" stroke-width="8"/>
+        <!-- Debris -->
+        <rect x="30" y="250" width="60" height="8" rx="2" fill="rgba(255,80,60,0.15)" transform="rotate(-15 30 250)"/>
+        <rect x="80" y="320" width="80" height="6" rx="2" fill="rgba(255,80,60,0.1)" transform="rotate(8 80 320)"/>
+        <rect x="10" y="150" width="40" height="5" rx="2" fill="rgba(255,80,60,0.12)" transform="rotate(-5 10 150)"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 3 — SYSTEM OVERVIEW
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--system" data-slide="3">
+    <canvas class="bg-canvas" id="systemCanvas"></canvas>
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <div class="slide-label">02 / HOW IT WORKS</div>
+
+    <div class="slide-content system-content">
+      <h2 class="section-title">How <span class="highlight-cyan">Neuro‑NeRF</span> Works</h2>
+      <p class="system-subtitle">Three integrated stages. One unified system.</p>
+
+      <div class="pipeline">
+        <!-- Stage 1 -->
+        <div class="pipeline-stage" data-stage="0">
+          <div class="stage-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- 3D wireframe cube -->
+              <rect x="12" y="16" width="24" height="20" rx="1" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M12 16 L20 10 L44 10 L44 30 L36 36" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/>
+              <path d="M36 16 L44 10" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/>
+              <path d="M12 36 L20 30 L44 30" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/>
+              <circle cx="12" cy="16" r="2" fill="currentColor"/>
+              <circle cx="36" cy="16" r="2" fill="currentColor"/>
+              <circle cx="12" cy="36" r="2" fill="currentColor"/>
+              <circle cx="36" cy="36" r="2" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="stage-num">Stage 01</div>
+          <div class="stage-name">NeRF-Inspired<br>Mapping</div>
+          <div class="stage-desc">Drone imagery builds a 3D digital twin — a live occupancy map of the disaster scene.</div>
+          <div class="stage-glow"></div>
+        </div>
+
+        <div class="pipeline-arrow" data-stage="0">
+          <svg viewBox="0 0 80 24" fill="none">
+            <path class="arrow-path" d="M0 12 L70 12" stroke="rgba(0,208,220,0.6)" stroke-width="1.5" stroke-dasharray="4 4"/>
+            <path d="M65 7 L75 12 L65 17" stroke="rgba(0,208,220,0.8)" stroke-width="1.5" fill="none"/>
+          </svg>
+        </div>
+
+        <!-- Stage 2 -->
+        <div class="pipeline-stage" data-stage="1">
+          <div class="stage-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Route planner path -->
+              <circle cx="10" cy="38" r="3" stroke="currentColor" stroke-width="1.5"/>
+              <circle cx="38" cy="10" r="3" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M10 38 L10 20 L28 20 L28 10 L38 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- Obstacle -->
+              <rect x="16" y="26" width="8" height="8" rx="1" stroke="rgba(255,100,80,0.8)" stroke-width="1.5"/>
+              <!-- Detour -->
+              <path d="M10 26 Q4 20 10 14 L18 10 L28 10" stroke="rgba(0,208,220,0.5)" stroke-width="1" stroke-dasharray="3 2"/>
+              <circle cx="24" cy="24" r="2" fill="currentColor"/>
+            </svg>
+          </div>
+          <div class="stage-num">Stage 02</div>
+          <div class="stage-name">Autonomous<br>Navigation</div>
+          <div class="stage-desc">Visual-inertial localization and safe route planning in GPS-denied, cluttered environments.</div>
+          <div class="stage-glow"></div>
+        </div>
+
+        <div class="pipeline-arrow" data-stage="1">
+          <svg viewBox="0 0 80 24" fill="none">
+            <path class="arrow-path" d="M0 12 L70 12" stroke="rgba(0,208,220,0.6)" stroke-width="1.5" stroke-dasharray="4 4"/>
+            <path d="M65 7 L75 12 L65 17" stroke="rgba(0,208,220,0.8)" stroke-width="1.5" fill="none"/>
+          </svg>
+        </div>
+
+        <!-- Stage 3 -->
+        <div class="pipeline-stage" data-stage="2">
+          <div class="stage-icon">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- EEG brain wave -->
+              <path d="M4 24 Q8 24 10 18 Q12 12 14 24 Q16 36 18 24 Q20 12 22 20 Q24 28 26 24 Q28 20 30 24 Q32 28 34 18 Q36 8 38 24 Q40 40 42 24 L44 24" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <!-- Human node -->
+              <circle cx="24" cy="8" r="4" stroke="rgba(0,208,220,0.8)" stroke-width="1.5"/>
+              <path d="M20 8 Q24 4 28 8" stroke="rgba(0,208,220,0.6)" stroke-width="1" fill="none"/>
+            </svg>
+          </div>
+          <div class="stage-num">Stage 03</div>
+          <div class="stage-name">EEG Brain<br>Copilot</div>
+          <div class="stage-desc">EEG decodes high-level motor imagery commands. ErrP veto signals trigger safe replanning.</div>
+          <div class="stage-glow"></div>
+        </div>
+      </div>
+
+      <!-- Bottom principle -->
+      <div class="system-principle" data-reveal="3">
+        <div class="principle-icon">⬡</div>
+        <p><strong>Human decides intent.</strong> AI handles complexity and motion planning.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 4 — 3D EXPLAINER
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--3d" data-slide="4">
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+    <div class="slide-label">04 / SYSTEM IN 3D</div>
+
+    <div class="slide-3d-layout">
+      <!-- LEFT: title + bullet points -->
+      <div class="s3d-left">
+        <h2 class="s3d-title">NeRF + BCI,<br><span class="highlight-cyan">Live</span></h2>
+        <ul class="s3d-bullets">
+          <li data-beat="1">
+            <span class="bullet-num">01</span>
+            <span>Drone captures <strong>2D images</strong> as it patrols the disaster zone</span>
+          </li>
+          <li data-beat="2">
+            <span class="bullet-num">02</span>
+            <span>NeRF-style model assembles a live <strong>3D digital twin</strong> from those images</span>
+          </li>
+          <li data-beat="3">
+            <span class="bullet-num">03</span>
+            <span>Autonomy layer plans a <strong>safe route</strong> through mapped corridors</span>
+          </li>
+          <li data-beat="4">
+            <span class="bullet-num">04</span>
+            <span>BCI detects motor imagery — sends <strong>target command</strong> to the drone</span>
+          </li>
+        </ul>
+        <button class="s3d-play-btn" id="s3dPlayBtn" onclick="window.NeuroScene.playNeuroNerfSequence()">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2l11 6-11 6V2z"/></svg>
+          Play Sequence
+        </button>
+      </div>
+
+      <!-- RIGHT: 3D canvas + HUD overlays -->
+      <div class="s3d-right" id="s3dRight">
+        <!-- Three.js canvas -->
+        <canvas id="neuroNerf3D" class="s3d-canvas"></canvas>
+
+        <!-- HUD overlays -->
+        <div class="s3d-hud" id="s3dHud">
+          <!-- EEG status strip -->
+          <div class="nn-panel nn-panel--eeg">
+            <div class="nn-panel-label">BCI / EEG STREAM</div>
+            <canvas id="nn-wave" class="nn-wave-canvas"></canvas>
+            <div class="nn-cmd-row">
+              <div class="nn-eeg-dot" id="nn-eeg-status"></div>
+              <div class="nn-cmd-label">STATUS</div>
+              <div class="nn-cmd-value" id="nn-cmd-value">STANDBY</div>
+            </div>
+          </div>
+          <!-- Status strip -->
+          <div class="nn-panel nn-panel--alert">
+            <div class="nn-panel-label">SYSTEM STATUS</div>
+            <div class="nn-alert-value" id="nn-alert">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 5 — INTERACTIVE MISSION DASHBOARD
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--dashboard" data-slide="5">
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <div class="slide-label">04 / SHARED AUTONOMY IN ACTION</div>
+
+    <div class="dashboard-header">
+      <div class="dash-title">NEURO-NERF MISSION INTERFACE</div>
+      <div class="dash-status-bar">
+        <span class="status-dot active"></span><span>SYSTEM ACTIVE</span>
+        <span class="status-sep">·</span>
+        <span class="status-dot" id="eegDot"></span><span id="eegStatus">EEG CONNECTED</span>
+        <span class="status-sep">·</span>
+        <span>MISSION: ALPHA-7</span>
+        <span class="status-sep">·</span>
+        <span id="missionTime">04:32</span>
+      </div>
+    </div>
+
+    <div class="dashboard-body">
+      <!-- LEFT: 3D Digital Twin Map -->
+      <div class="panel panel--map" id="mapPanel">
+        <div class="panel-label">DIGITAL TWIN · FLOOR 2 SCAN</div>
+        <canvas id="mapCanvas" class="map-canvas"></canvas>
+        <!-- Route overlay info -->
+        <div class="map-overlay-info" id="mapInfo">
+          <div class="info-chip" id="chipRoute">ROUTE COMPUTED</div>
+          <div class="info-chip danger" id="chipDanger" style="display:none">UNSAFE SEGMENT</div>
+          <div class="info-chip warn" id="chipVeto" style="display:none">ERRP VETO</div>
+          <div class="info-chip success" id="chipReplan" style="display:none">REPLANNING</div>
+        </div>
+      </div>
+
+      <!-- RIGHT PANELS -->
+      <div class="panel-stack">
+        <!-- EEG Command Panel -->
+        <div class="panel panel--eeg" id="eegPanel">
+          <div class="panel-label">EEG COMMAND STREAM</div>
+          <canvas id="eegCanvas" class="eeg-canvas"></canvas>
+          <div class="eeg-command-display">
+            <div class="cmd-label">DECODED INTENT</div>
+            <div class="cmd-value" id="cmdValue">ADVANCE</div>
+          </div>
+        </div>
+
+        <!-- Safety Event Panel -->
+        <div class="panel panel--safety" id="safetyPanel">
+          <div class="panel-label">SAFETY EVENTS</div>
+          <div class="safety-log" id="safetyLog">
+            <div class="log-entry" id="log1" style="opacity:0">
+              <span class="log-time">04:29</span>
+              <span class="log-icon cyan">→</span>
+              <span>Route computed. Obstacle density: moderate</span>
+            </div>
+            <div class="log-entry" id="log2" style="opacity:0">
+              <span class="log-time">04:30</span>
+              <span class="log-icon orange">⚠</span>
+              <span>Structural instability detected on path</span>
+            </div>
+            <div class="log-entry" id="log3" style="opacity:0">
+              <span class="log-time">04:31</span>
+              <span class="log-icon red">✕</span>
+              <span>ErrP detected — path veto triggered</span>
+            </div>
+            <div class="log-entry" id="log4" style="opacity:0">
+              <span class="log-time">04:32</span>
+              <span class="log-icon green">✓</span>
+              <span>Replanning complete. Safer route active.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Status Panel -->
+        <div class="panel panel--sysstat" id="sysPanel">
+          <div class="panel-label">AUTONOMY STATUS</div>
+          <div class="sys-rows">
+            <div class="sys-row">
+              <span class="sys-key">Human Intent</span>
+              <span class="sys-val active" id="sysHuman">ACTIVE</span>
+            </div>
+            <div class="sys-row">
+              <span class="sys-key">AI Navigation</span>
+              <span class="sys-val active" id="sysAI">ENGAGED</span>
+            </div>
+            <div class="sys-row">
+              <span class="sys-key">Veto Authority</span>
+              <span class="sys-val active" id="sysVeto">HUMAN</span>
+            </div>
+            <div class="sys-row">
+              <span class="sys-key">Path Safety</span>
+              <span class="sys-val" id="sysSafety" style="color:#fdab43">COMPUTING</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard footer narrative -->
+    <div class="dash-narrative" id="dashNarrative">
+      <span id="narrativeText">The responder issues high-level intent — AI plots a safe route through the debris.</span>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 6 — TECHNICAL SOUNDNESS
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--tech" data-slide="6">
+    <canvas class="bg-canvas" id="techCanvas"></canvas>
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <div class="slide-label">05 / TECHNICAL APPROACH</div>
+
+    <div class="slide-content tech-content">
+      <h2 class="section-title">Why This AI Approach Is <span class="highlight-cyan">Sound</span></h2>
+
+      <div class="tech-grid">
+        <div class="tech-card" data-reveal="0">
+          <div class="tech-card-header">
+            <div class="tech-icon">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M4 8 L16 4 L28 8 L28 24 L16 28 L4 24 Z" stroke="currentColor" stroke-width="1.5"/><path d="M4 8 L16 12 L28 8" stroke="currentColor" stroke-width="1.5" opacity="0.5"/><path d="M16 12 L16 28" stroke="currentColor" stroke-width="1.5" opacity="0.5"/></svg>
+            </div>
+            <div class="tech-method">NeRF-Inspired Mapping</div>
+          </div>
+          <div class="tech-justify">3D scene understanding from image data — no pre-built floor plans required.</div>
+          <div class="tech-tag">MAPS THE UNKNOWN</div>
+        </div>
+
+        <div class="tech-card" data-reveal="1">
+          <div class="tech-card-header">
+            <div class="tech-icon">
+              <svg viewBox="0 0 32 32" fill="none"><circle cx="6" cy="26" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="26" cy="6" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 26 L6 14 L18 14 L18 6 L26 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="11" y="18" width="6" height="6" rx="1" stroke="rgba(255,100,80,0.8)" stroke-width="1.5"/></svg>
+            </div>
+            <div class="tech-method">Visual-Inertial Localization</div>
+          </div>
+          <div class="tech-justify">GPS fails indoors and in rubble. Camera + IMU fusion maintains accurate position.</div>
+          <div class="tech-tag">GPS-DENIED READY</div>
+        </div>
+
+        <div class="tech-card" data-reveal="2">
+          <div class="tech-card-header">
+            <div class="tech-icon">
+              <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="24" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="26" cy="24" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M16 14 L6 21" stroke="currentColor" stroke-width="1.5" opacity="0.6"/><path d="M16 14 L26 21" stroke="currentColor" stroke-width="1.5" opacity="0.6"/></svg>
+            </div>
+            <div class="tech-method">Shared Autonomy</div>
+          </div>
+          <div class="tech-justify">Full manual is exhausting. Full autonomy is too risky in uncertain disaster zones.</div>
+          <div class="tech-tag">OPTIMAL HUMAN-AI SPLIT</div>
+        </div>
+
+        <div class="tech-card" data-reveal="3">
+          <div class="tech-card-header">
+            <div class="tech-icon">
+              <svg viewBox="0 0 32 32" fill="none"><path d="M2 16 Q5 16 6 11 Q7 6 8 16 Q9 26 10 16 Q11 6 12 12 Q13 18 14 16 Q15 14 16 16 Q17 18 18 11 Q19 4 20 16 Q21 28 22 16 Q23 4 24 12 L30 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </div>
+            <div class="tech-method">EEG High-Level Intent Only</div>
+          </div>
+          <div class="tech-justify">Motor imagery decoding for commands like "advance" or "hold" — not fine motor control. ErrP provides safety vetoes.</div>
+          <div class="tech-tag">REALISTIC & FEASIBLE</div>
+        </div>
+      </div>
+
+      <div class="tech-principle" data-reveal="4">
+        <div class="tech-principle-line"></div>
+        <p>The human remains in charge of <strong>intent</strong> and <strong>safety</strong> — AI handles <strong>complexity</strong> and motion planning.</p>
+        <div class="tech-principle-line"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 6 — VALIDATION ROADMAP
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--roadmap" data-slide="7">
+    <canvas class="bg-canvas" id="roadmapCanvas"></canvas>
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <div class="slide-label">06 / VALIDATION</div>
+
+    <div class="slide-content roadmap-content">
+      <h2 class="section-title">Testing &amp; Validation Plan</h2>
+      <p class="roadmap-subtitle">A phased, simulation-first approach — grounded in feasibility.</p>
+
+      <div class="roadmap-track">
+        <!-- Phase 1 -->
+        <div class="phase-block" data-reveal="0">
+          <div class="phase-connector-line left-line"></div>
+          <div class="phase-node">
+            <div class="phase-num">01</div>
+          </div>
+          <div class="phase-connector-line right-line"></div>
+          <div class="phase-card">
+            <div class="phase-label">Phase One</div>
+            <div class="phase-title">Digital Twin Simulation</div>
+            <div class="phase-desc">Validate NeRF-inspired occupancy grid generation, obstacle avoidance, and safe route planning in cluttered virtual disaster environments.</div>
+            <div class="phase-metrics">
+              <span class="metric-chip">Mapping Accuracy</span>
+              <span class="metric-chip">Safe Navigation</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 2 -->
+        <div class="phase-block" data-reveal="1">
+          <div class="phase-connector-line left-line"></div>
+          <div class="phase-node active">
+            <div class="phase-num">02</div>
+          </div>
+          <div class="phase-connector-line right-line"></div>
+          <div class="phase-card">
+            <div class="phase-label">Phase Two</div>
+            <div class="phase-title">EEG Signal Validation</div>
+            <div class="phase-desc">Validate high-level command decoding (motor imagery) and ErrP veto detection with a small set of commands and consumer-grade EEG hardware.</div>
+            <div class="phase-metrics">
+              <span class="metric-chip">Command Decoding</span>
+              <span class="metric-chip">Veto Response</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Phase 3 -->
+        <div class="phase-block" data-reveal="2">
+          <div class="phase-connector-line left-line"></div>
+          <div class="phase-node">
+            <div class="phase-num">03</div>
+          </div>
+          <div class="phase-connector-line right-line"></div>
+          <div class="phase-card">
+            <div class="phase-label">Phase Three</div>
+            <div class="phase-title">Integrated Shared Autonomy</div>
+            <div class="phase-desc">End-to-end system testing: measure path safety scores, successful replanning rate, and reduction in cognitive workload for the operator.</div>
+            <div class="phase-metrics">
+              <span class="metric-chip">Path Safety Score</span>
+              <span class="metric-chip">Operator Workload ↓</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feasibility-note" data-reveal="3">
+        <div class="fn-icon">⬡</div>
+        <p>Track 1 design: simulation over field trials · simple occupancy grids over heavy training runs · consumer EEG over clinical hardware.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════
+       SLIDE 7 — CLOSING
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--closing" data-slide="8">
+    <canvas class="bg-canvas" id="closingCanvas"></canvas>
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+
+    <div class="closing-content">
+      <!-- Glowing path visual -->
+      <div class="closing-visual">
+        <svg class="closing-svg" viewBox="0 0 600 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Structural debris silhouettes -->
+          <rect x="0" y="120" width="600" height="80" fill="rgba(0,0,0,0.6)"/>
+          <polygon points="40,120 80,80 120,120" fill="rgba(30,35,45,0.9)"/>
+          <polygon points="100,120 130,90 160,120" fill="rgba(25,30,40,0.9)"/>
+          <polygon points="160,120 210,60 260,120" fill="rgba(20,28,38,0.9)"/>
+          <polygon points="350,120 390,85 430,120" fill="rgba(28,32,42,0.9)"/>
+          <polygon points="430,120 480,70 530,120" fill="rgba(22,30,40,0.9)"/>
+          <polygon points="520,120 560,95 600,120" fill="rgba(26,34,44,0.9)"/>
+          <!-- Safe route path glow -->
+          <path class="closing-route" d="M0 140 Q80 100 160 130 Q220 150 280 110 Q340 70 420 115 Q480 145 560 120 L600 110" stroke="url(#routeGrad)" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <!-- Drone dot -->
+          <circle class="closing-drone-dot" cx="0" cy="140" r="6" fill="#00D0DC"/>
+          <circle class="closing-drone-dot" cx="0" cy="140" r="12" fill="rgba(0,208,220,0.2)"/>
+          <!-- Gradient -->
+          <defs>
+            <linearGradient id="routeGrad" x1="0" y1="0" x2="600" y2="0">
+              <stop offset="0%" stop-color="#00D0DC" stop-opacity="0.3"/>
+              <stop offset="50%" stop-color="#00D0DC" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#00D0DC" stop-opacity="0.4"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <div class="closing-text">
+        <div class="closing-eyebrow">Human Judgment · AI Precision</div>
+        <h2 class="closing-headline">
+          The goal is not to replace the rescuer.
+        </h2>
+        <p class="closing-body">
+          It is to give them a safer way to <span class="highlight-cyan">see</span>, <span class="highlight-orange">decide</span>, and <span class="highlight-cyan">save lives</span>.
+        </p>
+        <div class="closing-divider"></div>
+        <div class="closing-cta">
+          <div class="cta-block">
+            <div class="cta-label">Project</div>
+            <div class="cta-value">Neuro‑NeRF</div>
+          </div>
+          <div class="cta-sep"></div>
+          <div class="cta-block">
+            <div class="cta-label">Presenter</div>
+            <div class="cta-value">Kiaan Sharma</div>
+          </div>
+          <div class="cta-sep"></div>
+          <div class="cta-block">
+            <div class="cta-label">Competition</div>
+            <div class="cta-value">Presidential AI Challenge</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div><!-- end .deck -->
+
+<!-- ── NAVIGATION ─────────────────────────────────────────────── -->
+<nav class="nav-controls">
+  <button class="nav-btn" id="prevBtn" aria-label="Previous slide" disabled>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+  </button>
+  <div class="slide-indicators" id="indicators"></div>
+  <button class="nav-btn" id="nextBtn" aria-label="Next slide">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+  </button>
+</nav>
+
+<!-- Slide counter -->
+<div class="slide-counter" id="slideCounter">1 / 8</div>
+
+<!-- Keyboard hint -->
+<div class="keyboard-hint" id="kbHint">Press <kbd>→</kbd> or <kbd>Space</kbd> to advance</div>
+
+<script src="deck.js?v=4"></script>
+<script src="scene3d.js?v=4"></script>
+<script data-pplx-inline-edit>
+(function(){
+  if(window===window.top)return;
+  function inlineAll(orig,clone){
+    if(orig.nodeType!==1)return;
+    try{
+      var cs=getComputedStyle(orig);
+      var t='';
+      for(var i=0;i<cs.length;i++){t+=cs[i]+':'+cs.getPropertyValue(cs[i])+';';}
+      clone.style.cssText=t;
+    }catch(e){}
+    var oc=orig.children,cc=clone.children;
+    for(var j=0;j<oc.length&&j<cc.length;j++){inlineAll(oc[j],cc[j]);}
+  }
+  function stripExternal(clone){
+    var imgs=clone.querySelectorAll('img');
+    for(var i=0;i<imgs.length;i++){
+      var s=imgs[i].getAttribute('src');
+      if(s&&!s.startsWith('data:'))imgs[i].removeAttribute('src');
+    }
+    var all=clone.querySelectorAll('*');
+    for(var i=0;i<all.length;i++){
+      var st=all[i].style.cssText;
+      if(st&&st.indexOf('url(')>=0){
+        all[i].style.cssText=st.replace(/url\(["']?(?!data:)[^)"']*["']?\)/gi,'none');
+      }
+    }
+  }
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='INLINE_EDIT_CAPTURE_REQUEST')return;
+    var scrollX=window.scrollX||window.pageXOffset||0;
+    var scrollY=window.scrollY||window.pageYOffset||0;
+    var w=window.innerWidth,h=window.innerHeight;
+    try{
+      var clone=document.documentElement.cloneNode(true);
+      var rm=clone.querySelectorAll('script,link[rel="stylesheet"],style');
+      for(var i=0;i<rm.length;i++){rm[i].remove();}
+      inlineAll(document.documentElement,clone);
+      stripExternal(clone);
+      var html=new XMLSerializer().serializeToString(clone);
+      var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'
+        +'<foreignObject width="100%" height="100%">'
+        +'<div xmlns="http://www.w3.org/1999/xhtml" style="width:'+w+'px;height:'+h+'px;overflow:hidden">'
+        +'<div style="transform:translate(-'+scrollX+'px,-'+scrollY+'px);transform-origin:top left">'
+        +html+'</div></div></foreignObject></svg>';
+      var svgUrl='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+      var img=new Image();
+      img.onload=function(){
+        var c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0);
+        window.parent.postMessage({type:'INLINE_EDIT_SCREENSHOT_RESULT',dataUrl:c.toDataURL('image/png'),scrollX:scrollX,scrollY:scrollY},'*');
+      };
+      img.onerror=function(){
+        window.parent.postMessage({type:'INLINE_EDIT_SCREENSHOT_RESULT',dataUrl:null,scrollX:scrollX,scrollY:scrollY},'*');
+      };
+      img.src=svgUrl;
+    }catch(err){
+      window.parent.postMessage({type:'INLINE_EDIT_SCREENSHOT_RESULT',dataUrl:null,scrollX:scrollX,scrollY:scrollY},'*');
+    }
+  });
+})();
+</script></body>
+</html>

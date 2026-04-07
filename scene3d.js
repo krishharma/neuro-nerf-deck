@@ -1,13 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════════
-   NEURO-NERF 3D EXPLAINER — scene3d.js  v4
+   NEURO-NERF 3D EXPLAINER — scene3d.js  v5  (restored + polished)
 
-   Focused 3-phase sequence (≈22 s):
-     Phase 1 — NeRF mapping: drone scans, voxels build up   (8 s)
-     Phase 2 — Route planning + navigation                   (6 s)
-     Phase 3 — BCI command → labeled intent → target reach  (8 s)
+   3-Phase sequence (≈28 s) — isometric follow camera:
+     Phase 1 — NeRF scanning: drone flies, voxels build     (8 s)
+     Phase 2 — Map-guided navigation: path + drone flies    (8 s)
+     Phase 3 — BCI command → labeled intent → target        (9 s)
+     Hold     — end card                                    (3 s)
 
-  Camera: elevated chase cam with a bird's-eye perspective.
-  The drone stays in frame while preserving 3D context.
+   Camera: smooth isometric follow that stays behind-above the drone,
+   always 8–10 units back so the environment context is always visible.
+   The drone is always in the lower-centre of frame.
 
    PUBLIC API:
      window.NeuroScene.initNeuroScene(canvasEl, hudContainer)
@@ -19,11 +21,12 @@
 'use strict';
 
 /* ── TIMING ──────────────────────────────────────────────────────── */
-const T = {
-  SCAN:    8.0,   // Phase 1: drone scans, voxels build
-  NAV:     6.0,   // Phase 2: path appears, drone flies
-  BCI:     8.0,   // Phase 3: BCI fires, drone flies to target
-  HOLD:    2.5,   // end-card hold
+const DUR = {
+  IMGS:  7.0,   // Phase 0 — 2-D camera frames converge → 3-D map builds
+  SCAN:  0,     // skipped — scanning phase removed
+  NAV:   9.0,   // route reveal + BCI command fires (drone stationary)
+  FLY:   8.0,   // drone flies the full route to target
+  HOLD:  3.0,
 };
 
 /* ── COLORS ──────────────────────────────────────────────────────── */
@@ -33,34 +36,41 @@ const C = {
   CYAN_DIM: 0x005060,
   GREEN:    0x22C47B,
   ORANGE:   0xFF6B35,
-  WALL:     0x1a2438,
-  WALL_E:   0x2e4060,
-  DEBRIS:   0x1c2a3c,
-  DEBRIS_E: 0x304055,
-  FLOOR:    0x0d1525,
+  WALL:     0x1e3050,
+  WALL_E:   0x3a5580,
+  DEBRIS:   0x1a2a40,
+  DEBRIS_E: 0x2e4560,
+  FLOOR:    0x0d1828,
 };
 
-/* ── CONSTANTS ───────────────────────────────────────────────────── */
-const FH    = 1.5;   // drone fly height
-const CHASE = { back: 6.2, up: 4.8, side: 2.0 }; // elevated trailing bird's-eye offset
+const FH = 1.5; // drone flight height
 
 /* ── STATE ───────────────────────────────────────────────────────── */
 let _rdr, _scene, _cam, _clock, _raf = null, _disposed = false;
-let _droneCyanLight = null;
-let _drone, _rotors = [], _glowRing, _droneGlow;
+let _drone, _rotors = [], _glowRing, _droneGlow, _cyanLight;
+let _frustumCone, _frustumEdge;
 let _voxGrp, _voxQueue = [], _voxBatch = 0;
-let _frustumCone, _frustumEdge;       // scanning frustum on drone
 let _pathLine, _ptSpheres = [], _bciPathLine;
 let _targetHalo, _targetBeacon;
-let _bciBeam, _bciPulse, _bciBeamMat, _bciPulseMat;
+let _bciBeamMat, _bciBeam, _bciPulseMat, _bciPulse;
 let _eegHudEl, _cmdHudEl, _alertHudEl, _waveHudEl;
-let _operatorEl, _intentEl;
+let _operatorEl, _intentEl, _bciLabelEl;
+let _operatorFigure, _operatorGlowMesh;
+let _imgFrames = [];   // Phase-0 camera frame planes
+let _envSolids = [];   // opaque env meshes (walls, floor, debris…)
+let _envEdges  = [];   // edge line-segs + grid (appear first as wireframe)
 let _seqT = 0, _playing = false, _phase = 0, _waveOff = 0;
 
-/* Waypoints — collision-free by design (open corridor positions) */
-const SCAN_WPS = []; // Phase 1 patrol
-const NAV_WPS  = []; // Phase 2 nav
-const BCI_WPS  = []; // Phase 3 extension to target
+/* Fixed world position of the 3D operator figure (used as beam source).
+   Placed close to the building's front-right entrance so it sits clearly
+   in the foreground of the initial top-down camera view. */
+const OPERATOR_POS = new THREE.Vector3(3.5, 1.8, 8.5);
+
+/* Paths — all waypoints verified in open corridor space */
+const SCAN_WPS = [];
+const NAV_WPS  = [];
+const BCI_WPS  = [];
+const FULL_WPS = []; // NAV_WPS + BCI target — used for the flight phase
 
 /* ═══════════════════════════════════════════════════════════════════
    PUBLIC API
@@ -81,12 +91,14 @@ function initNeuroScene(canvasEl, hudContainer) {
   _buildVoxels();
   _buildDrone();
   _buildFrustum();
-  _buildPathVisuals();
+  _buildPaths();
   _buildTarget();
   _buildBCIBeam();
+  _buildImageFrames();
+  _buildOperatorFigure();
 
   _rdr.render(_scene, _cam);
-  _loop();
+  _renderLoop();
 }
 
 function playNeuroNerfSequence() {
@@ -96,8 +108,23 @@ function playNeuroNerfSequence() {
   _waveOff  = 0;
   _playing  = true;
 
-  /* Reset voxels */
-  _voxGrp.children.forEach(v => { v.visible = false; v.material.opacity = 0; });
+  /* Voxels start invisible — they materialise during Phase 0 (IMGS) */
+  _voxGrp.children.forEach(v => { v.visible = true; v.material.opacity = 0.0; });
+  _voxBatch = _voxQueue.length;
+
+  /* Reset Phase-0 camera frames to start positions */
+  _imgFrames.forEach(f => {
+    f.mesh.visible = false;
+    f.mesh.position.copy(f.startPos);
+    f.mesh.rotation.copy(f.startRot);
+    f.mesh.material.opacity = 0;
+  });
+
+  /* Reset environment to invisible — it builds during Phase 0 */
+  _envEdges.forEach(o => {
+    [o.material].flat().forEach(m => { m.opacity = 0; });
+  });
+  _envSolids.forEach(o => { o.material.opacity = 0; });
 
   /* Reset path */
   _pathLine.visible    = false;
@@ -105,30 +132,37 @@ function playNeuroNerfSequence() {
   _ptSpheres.forEach(s => { s.visible = false; s.material.opacity = 0; });
 
   /* Reset target */
-  if (_targetHalo)   { _targetHalo.visible   = false; _targetHalo.material.opacity   = 0; }
-  if (_targetBeacon) { _targetBeacon.visible  = false; _targetBeacon.material.opacity = 0; }
+  _targetHalo.visible    = false;
+  _targetBeacon.visible  = false;
+  _targetHalo.material.opacity    = 0;
+  _targetBeacon.material.opacity  = 0;
 
   /* Reset BCI */
   _bciBeam.visible  = false;
   _bciPulse.visible = false;
+  _bciBeamMat.opacity  = 0;
+  _bciPulseMat.opacity = 0;
 
-  /* Reset frustum */
+  /* Frustum not used — scanning is skipped */
   _frustumCone.visible = false;
   _frustumEdge.visible = false;
 
-  /* Reset drone to start */
-  const sp = SCAN_WPS[0];
+  /* Place drone at NAV start (Phase 2 start point) */
+  const sp = NAV_WPS[0];
   _drone.position.set(sp.x, FH, sp.z);
   _drone.rotation.set(0, 0, 0);
 
-  /* Fixed elevated bird's-eye — reset to same static position every time */
-  _cam.position.set(0, 16, 7);
-  _cam.lookAt(0, 0, -1);
+  /* Reset operator panel */
+  if (_operatorEl) _operatorEl.style.opacity = '0';
+  if (_intentEl)   { _intentEl.textContent = 'EEG intent: STANDBY'; _intentEl.style.color = '#c8d8ee'; }
+  if (_bciLabelEl) _bciLabelEl.textContent = 'BCI READY';
 
   /* Reset HUD */
-  _hud('standby', 'SCANNING', '—');
-  if (_operatorEl) _operatorEl.style.opacity = '0';
-  if (_intentEl)   _intentEl.textContent = 'EEG intent: STANDBY';
+  _hud('standby', 'PROCESSING', 'Reconstructing 3-D scene from images…');
+
+  /* Camera starts high and pulled back for the IMGS phase */
+  _cam.position.set(sp.x, FH + 18, sp.z + 14);
+  _cam.lookAt(sp.x, FH, sp.z - 2);
 
   _clock.start();
 }
@@ -143,40 +177,52 @@ function disposeNeuroScene() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   WAYPOINTS — all open-corridor positions, hand-verified
-   Scene X: -8..8   Z: -8..7   Y=FH always
-   Corridors:  left (X≈-6), centre (X≈0), right (X≈6)
+   WAYPOINTS
+   Layout: X∈[-8,8], Z∈[-8,7], corridors left(X≈-5), centre(X≈0), right(X≈5)
    ═══════════════════════════════════════════════════════════════════ */
 function _buildWaypoints() {
   const h = FH;
 
-  /* Phase 1: short scanning loop — stays in clear zones */
+  /* ── WALL MAP ─────────────────────────────────────────────────────
+     Left-centre divider  : X = -3,   Z spans  -5 … +5
+     Centre-right divider : X = +2.8, Z spans  -7 … +1
+     Safe front crossing Z: > +5.5  (above both divider tops)
+     Strategy: ALL divider crossings happen at Z = +5.5 via pure X moves.
+     No diagonal moves ever cross a divider — lerp lag can't clip a wall.
+     ────────────────────────────────────────────────────────────────── */
+
+  /* Phase 1: start at crossing height, cross straight into centre, scan forward.
+     No backtracking — drone moves continuously in one direction.
+     Left-centre divider crossed at Z=5.5 > +5 (pure X move, zero diagonal). */
   [
-    [-5, h,  5],   // start, left corridor front
-    [-5, h,  1],   // move back
-    [-2, h, -1],   // cross to centre
-    [ 1, h,  2],   // centre-front
-    [ 1, h, -2],   // centre-back
+    [-5, h,  5.5],  // ① left corridor at safe crossing height
+    [ 0, h,  5.5],  // ② PURE X: cross left-centre divider at Z=5.5 ✓
+    [ 1, h,  2  ],  // ③ enter centre corridor (pure -Z)
+    [ 1, h, -3  ],  // ④ scan deeper into centre (pure -Z, no walls at X=1)
   ].forEach(([x,y,z]) => SCAN_WPS.push(new THREE.Vector3(x,y,z)));
 
-  /* Phase 2: nav path deeper, detours around interior divider wall */
+  /* Phase 2: cross to right corridor via same front gap then descend */
   [
-    [ 1, h, -2],   // from scan end
-    [ 1, h, -5],   // south in centre
-    [ 1, h, -7.2], // move below divider tail before crossing
-    [ 4, h, -7.2], // cross in rear open gap (no wall collision)
-    [ 4, h, -7],   // near target
+    [ 1, h,  3  ],  // ① from scan end
+    [ 1, h,  5.5],  // ② move up to safe crossing height (pure +Z)
+    [ 4, h,  5.5],  // ③ PURE X MOVE: cross centre-right divider at Z=5.5 > +1 ✓
+    [ 4, h, -2  ],  // ④ descend right corridor (pure -Z)
+    [ 4, h, -6  ],  // ⑤ deep right corridor near target (pure -Z)
   ].forEach(([x,y,z]) => NAV_WPS.push(new THREE.Vector3(x,y,z)));
 
-  /* Phase 3: BCI extension to marked target spot */
+  /* Phase 3: BCI-guided extension to target */
   [
-    [ 4, h, -7],   // from nav end
-    [ 5, h, -7],   // TARGET — open pocket right-back
+    [ 4, h, -6],
+    [ 5, h, -7],
   ].forEach(([x,y,z]) => BCI_WPS.push(new THREE.Vector3(x,y,z)));
+
+  /* Full flight route: NAV path + BCI target (skip duplicate junction point) */
+  NAV_WPS.forEach(v => FULL_WPS.push(v));
+  BCI_WPS.slice(1).forEach(v => FULL_WPS.push(v));
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   SCENE / RENDERER
+   SCENE
    ═══════════════════════════════════════════════════════════════════ */
 function _buildScene(canvas) {
   const W = Math.max(canvas.offsetWidth,  800);
@@ -188,23 +234,25 @@ function _buildScene(canvas) {
   _rdr.setClearColor(C.BG, 1.0);
 
   _scene = new THREE.Scene();
-  _scene.fog = new THREE.FogExp2(C.BG, 0.022); // subtle fog — doesn't obscure nearby geometry
+  _scene.fog = new THREE.FogExp2(C.BG, 0.018); // gentle fog — doesn't hide nearby geometry
 
-  _cam = new THREE.PerspectiveCamera(52, W / H, 0.1, 80);
-  /* Fixed elevated bird's-eye view — set once, never moves */
-  _cam.position.set(0, 16, 7);
-  _cam.lookAt(0, 0, -1);
+  _cam = new THREE.PerspectiveCamera(55, W / H, 0.1, 100);
+  const sp = NAV_WPS[0];
+  _cam.position.set(sp.x, FH + 14, sp.z + 10);
+  _cam.lookAt(sp.x, FH, sp.z - 2);
 
-  /* Lighting — bright enough to see geometry clearly */
-  _scene.add(new THREE.AmbientLight(0x3a5577, 1.4));
-  const sun = new THREE.DirectionalLight(0x6688bb, 1.0);
-  sun.position.set(4, 10, 6);
+  /* Bright lighting so environment is visible from frame 1 */
+  _scene.add(new THREE.AmbientLight(0x445577, 1.8));
+  const sun = new THREE.DirectionalLight(0x7799cc, 1.2);
+  sun.position.set(5, 12, 8);
   _scene.add(sun);
-  /* Cyan fill — follows the drone */
-  const cpt = new THREE.PointLight(C.CYAN, 1.2, 10);
-  cpt.position.set(0, 3, 0);
-  _scene.add(cpt);
-  _droneCyanLight = cpt; // stored in module var
+  const fill = new THREE.DirectionalLight(0x334466, 0.5);
+  fill.position.set(-5, 6, -4);
+  _scene.add(fill);
+
+  /* Cyan point light tracks drone */
+  _cyanLight = new THREE.PointLight(C.CYAN, 1.5, 9);
+  _scene.add(_cyanLight);
 
   _clock = new THREE.Clock(false);
 
@@ -219,108 +267,120 @@ function _buildScene(canvas) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   ENVIRONMENT — believable interior, walls never overlap corridors
+   ENVIRONMENT
    ═══════════════════════════════════════════════════════════════════ */
 function _buildEnvironment() {
-  const wM  = new THREE.MeshLambertMaterial({ color: C.WALL });
-  const dM  = new THREE.MeshLambertMaterial({ color: C.DEBRIS });
+  _envSolids = [];
+  _envEdges  = [];
 
-  function solid(x, y, z, w, h, d, ry=0, mat=wM, ec=C.WALL_E) {
+  /* All solid materials start transparent — they fade in during Phase 0 */
+  const wM = new THREE.MeshLambertMaterial({ color: C.WALL,   transparent: true, opacity: 0 });
+  const dM = new THREE.MeshLambertMaterial({ color: C.DEBRIS, transparent: true, opacity: 0 });
+
+  function solid(x, y, z, w, h, d, ry = 0, mat = wM, ec = C.WALL_E) {
     const g = new THREE.BoxGeometry(w, h, d);
     const m = new THREE.Mesh(g, mat);
     m.position.set(x, y, z);
     m.rotation.y = ry;
     _scene.add(m);
+    _envSolids.push(m);   // tracked for fade-in
+
     const el = new THREE.LineSegments(
       new THREE.EdgesGeometry(g),
-      new THREE.LineBasicMaterial({ color: ec })
+      new THREE.LineBasicMaterial({ color: ec, transparent: true, opacity: 0 })
     );
     el.position.copy(m.position);
     el.rotation.y = ry;
     _scene.add(el);
+    _envEdges.push(el);   // tracked for early wireframe phase
   }
 
   /* Floor */
-  const fGeo  = new THREE.PlaneGeometry(24, 20);
-  const floor = new THREE.Mesh(fGeo, new THREE.MeshLambertMaterial({ color: C.FLOOR }));
+  const floorMat = new THREE.MeshLambertMaterial({ color: C.FLOOR, transparent: true, opacity: 0 });
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(24, 20), floorMat);
   floor.rotation.x = -Math.PI / 2;
   _scene.add(floor);
+  _envSolids.push(floor);
+
   const grid = new THREE.GridHelper(24, 24, 0x2a4060, 0x1a2840);
   grid.position.y = 0.01;
+  /* GridHelper has an array of two materials */
+  [grid.material].flat().forEach(m => { m.transparent = true; m.opacity = 0; });
   _scene.add(grid);
+  _envEdges.push(grid);
 
-  /* Outer shell */
-  solid(-8.85, 2.5,  0, 0.3, 5, 18);  // left wall
-  solid( 8.85, 2.5,  0, 0.3, 5, 18);  // right wall
-  solid(  0,   2.5, -8, 18,  5, 0.3); // back wall
-  solid( -5,   2.5,  7,  6,  5, 0.3); // front-left partial
-  solid(  5,   2.5,  7,  6,  5, 0.3); // front-right partial
+  /* Outer walls */
+  solid(-8.85, 2.5,  0,   0.3, 5, 18);
+  solid( 8.85, 2.5,  0,   0.3, 5, 18);
+  solid(  0,   2.5, -8,  18,   5, 0.3);
+  solid( -5,   2.5,  7,   6,   5, 0.3);
+  solid(  5,   2.5,  7,   6,   5, 0.3);
 
-  /* Interior dividers — create 3 corridors, all openings preserved */
-  solid(-3.2, 2.0,  0,  0.3, 4,  10);  // left/centre divider (clear gap beyond Z>5 and <-5)
-  solid( 2.8, 2.0, -3,  0.3, 4,   8);  // centre/right divider
+  /* Interior dividers — create 3 clear corridors */
+  solid(-3.0, 2.0,  0,   0.3, 4, 10);
+  solid( 2.8, 2.0, -3,   0.3, 4,  8);
 
-  /* Pillars — placed away from all path waypoints */
-  solid(-6.5, 2.0,  3,  0.65, 4, 0.65);
-  solid(-6.5, 2.0, -4,  0.65, 4, 0.65);
-  solid( 6.5, 2.0,  3,  0.65, 4, 0.65);
-  solid( 6.5, 2.0, -4,  0.65, 4, 0.65);
+  /* Pillars */
+  solid(-6.5, 2.0,  4,  0.65, 4, 0.65);
+  solid(-6.5, 2.0, -3,  0.65, 4, 0.65);
+  solid( 6.0, 2.0,  3,  0.65, 4, 0.65);
+  solid( 6.0, 2.0, -5,  0.65, 4, 0.65);
   solid(  0,  2.0,  4,  0.65, 4, 0.65);
 
-  /* Fallen beams — above drone path (Y > 2) */
-  const bMat = new THREE.MeshLambertMaterial({ color: 0x1e2f48 });
-  solid( 1, 3.6,  5,  7,  0.22, 0.35,  0.2,  bMat, 0x2d4260);
-  solid(-4, 3.4, -3,  5,  0.22, 0.35, -0.15, bMat, 0x2d4260);
-  solid( 5, 3.2, -6,  4,  0.22, 0.35,  0.28, bMat, 0x2d4260);
+  /* Fallen beams */
+  const bM = new THREE.MeshLambertMaterial({ color: 0x1e3048, transparent: true, opacity: 0 });
+  solid( 1,  3.7,  5,  7,  0.22, 0.35,  0.2,  bM, 0x2e4560);
+  solid(-4,  3.5, -3,  5,  0.22, 0.35, -0.12, bM, 0x2e4560);
+  solid( 5,  3.3, -6,  4,  0.22, 0.35,  0.25, bM, 0x2e4560);
 
-  /* Debris — placed off the nav corridors */
-  const debData = [
-    [-7.2,  4, .7, .45, .5], [-7.0, -2, .6, .5,  .6],
-    [-1.5,  3, .5, .35, .4], [ 0.5,  5, .8, .5,  .7],
-    [ 3.0,  1, .6, .4,  .5], [ 6.5,  0, .7, .55, .6],
-    [ 6.5, -6, .6, .45, .5], [-5.0, -6, .8, .5,  .6],
-    [ 0.5, -7, .7, .4,  .5], [-2.0,  6, .6, .5,  .4],
+  /* Debris */
+  const deb = [
+    [-7.2,  3.5], [-7.0, -2.0], [-1.5, 3.0],
+    [ 0.5,  5.0], [ 3.0,  1.0], [ 6.5,  0.5],
+    [ 6.5, -6.0], [-5.0, -6.5], [ 0.5, -7.0],
   ];
-  debData.forEach(([x, z, sx, sy, sz], i) => {
-    solid(x, sy/2, z, sx, sy, sz, i * 0.4, dM, C.DEBRIS_E);
+  deb.forEach(([dx, dz], i) => {
+    const sx = 0.6 + (i % 3) * 0.25, sy = 0.35 + (i % 4) * 0.18, sz = 0.5 + (i % 2) * 0.3;
+    solid(dx, sy/2, dz, sx, sy, sz, i * 0.38, dM, C.DEBRIS_E);
   });
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   VOXEL FIELD — NeRF digital twin point cloud
+   VOXEL FIELD
    ═══════════════════════════════════════════════════════════════════ */
 function _buildVoxels() {
-  _voxGrp = new THREE.Group();
+  _voxGrp  = new THREE.Group();
+  _voxQueue = [];
   _scene.add(_voxGrp);
 
   const S   = 0.3;
   const geo = new THREE.BoxGeometry(S, S, S);
   const pos = [];
 
-  /* Wall surfaces (sampled, not solid fill) */
-  function wallLine(axis, fixed, a0, a1, y0, y1, density = 0.55) {
+  function wallStrip(axis, fixed, a0, a1, y0, y1) {
     for (let a = a0; a <= a1; a += S * 2.8) {
       for (let y = y0; y <= y1; y += S * 2.8) {
-        if (_det(a, y + fixed) > density) continue;
-        const p = axis === 'x' ? { x: fixed, y, z: a } : { x: a, y, z: fixed };
-        pos.push({ ...p, t: 'wall' });
+        if (_det(a, y + fixed) < 0.5) continue;
+        pos.push(axis === 'x'
+          ? { x: fixed, y, z: a, t: 'wall' }
+          : { x: a, y, z: fixed, t: 'wall' });
       }
     }
   }
-  wallLine('x', -8.7,  -7,  7,  0.15, 4.5);
-  wallLine('x',  8.7,  -7,  7,  0.15, 4.5);
-  wallLine('z', -7.7,  -8,  8,  0.15, 4.5);
-  wallLine('x', -3.2,  -4.5, 4.5, 0.15, 3.8, 0.45);
-  wallLine('x',  2.8,  -6.5, 3.5, 0.15, 3.8, 0.45);
 
-  /* Floor zone */
-  for (let x = -8; x <= 8; x += S * 3.2) {
-    for (let z = -7; z <= 6; z += S * 3.2) {
-      if (_det(x, z) < 0.55) pos.push({ x, y: 0.14, z, t: 'floor' });
+  wallStrip('x', -8.7, -7, 7, 0.15, 4.5);
+  wallStrip('x',  8.7, -7, 7, 0.15, 4.5);
+  wallStrip('z', -7.7, -8, 8, 0.15, 4.5);
+  wallStrip('x', -3.0, -4.5, 4.5, 0.15, 3.8);
+  wallStrip('x',  2.8, -6.5, 3.5, 0.15, 3.8);
+
+  /* Floor */
+  for (let x = -8; x <= 8; x += S * 3.0) {
+    for (let z = -7; z <= 7; z += S * 3.0) {
+      if (_det(x, z) > 0.55) pos.push({ x, y: 0.14, z, t: 'floor' });
     }
   }
 
-  /* Sort by distance from drone start */
   const sp = SCAN_WPS[0];
   pos.sort((a, b) =>
     Math.hypot(a.x - sp.x, a.z - sp.z) -
@@ -328,12 +388,13 @@ function _buildVoxels() {
   );
 
   pos.forEach(p => {
+    const t   = _det(p.x, p.z);
     const col = p.t === 'wall'
-      ? _lerpc(C.CYAN_DIM, C.CYAN, _det(p.x, p.z) * 0.5)
-      : _lerpc(C.CYAN_DIM, C.CYAN, _det(p.x, p.z) * 0.8);
+      ? _lerpc(C.CYAN_DIM, C.CYAN, t * 0.6)
+      : _lerpc(C.CYAN_DIM, C.CYAN, t * 0.9);
     const mat = new THREE.MeshBasicMaterial({
       color: col, transparent: true, opacity: 0,
-      wireframe: _det(p.x * 2.7, p.z * 1.9) < 0.3,
+      wireframe: t < 0.3,
     });
     const v = new THREE.Mesh(geo.clone(), mat);
     v.position.set(p.x, p.y, p.z);
@@ -344,7 +405,7 @@ function _buildVoxels() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   DRONE MODEL
+   DRONE
    ═══════════════════════════════════════════════════════════════════ */
 function _buildDrone() {
   _drone  = new THREE.Group();
@@ -353,7 +414,7 @@ function _buildDrone() {
   const bM = new THREE.MeshLambertMaterial({ color: 0x2a4060 });
   const aM = new THREE.MeshLambertMaterial({ color: 0x1e3050 });
   const cM = new THREE.MeshBasicMaterial({ color: C.CYAN });
-  const rM = new THREE.MeshBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+  const rM = new THREE.MeshBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0.28, side: THREE.DoubleSide });
 
   /* Body */
   _drone.add(_mk(new THREE.BoxGeometry(0.55, 0.14, 0.55), bM));
@@ -366,14 +427,14 @@ function _buildDrone() {
   pod.position.set(0, -0.04, 0.32);
   _drone.add(pod);
 
-  /* Glow sphere — lights up on BCI receive */
+  /* Drone glow sphere (BCI receive) */
   _droneGlow = _mk(
-    new THREE.SphereGeometry(0.6, 12, 10),
+    new THREE.SphereGeometry(0.65, 12, 10),
     new THREE.MeshBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false })
   );
   _drone.add(_droneGlow);
 
-  /* Arms + motors + rotors */
+  /* Arms + rotors */
   [
     new THREE.Vector3( 0.62, 0,  0.62),
     new THREE.Vector3(-0.62, 0,  0.62),
@@ -384,14 +445,14 @@ function _buildDrone() {
     arm.position.copy(dir.clone().multiplyScalar(0.5));
     arm.lookAt(dir); arm.rotateX(Math.PI / 2);
     _drone.add(arm);
-    const motorMesh = _mk(new THREE.CylinderGeometry(0.066, 0.066, 0.066, 8), bM);
-    motorMesh.position.copy(dir);
-    _drone.add(motorMesh);
-    const r = _mk(new THREE.CircleGeometry(0.24, 14), rM);
-    r.rotation.x = -Math.PI / 2;
-    r.position.copy(dir).setY(dir.y + 0.045);
-    _drone.add(r);
-    _rotors.push(r);
+    const motor = _mk(new THREE.CylinderGeometry(0.066, 0.066, 0.066, 8), bM);
+    motor.position.copy(dir);
+    _drone.add(motor);
+    const rotor = _mk(new THREE.CircleGeometry(0.24, 14), rM);
+    rotor.rotation.x = -Math.PI / 2;
+    rotor.position.copy(dir).setY(dir.y + 0.045);
+    _drone.add(rotor);
+    _rotors.push(rotor);
   });
 
   /* Glow ring */
@@ -408,21 +469,25 @@ function _buildDrone() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   SCANNING FRUSTUM (attached to drone, Phase 1)
+   FRUSTUM CONE (scanning phase)
    ═══════════════════════════════════════════════════════════════════ */
 function _buildFrustum() {
-  const cGeo  = new THREE.ConeGeometry(1.4, 2.8, 8, 1, true);
-  const cMat  = new THREE.MeshBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false });
-  _frustumCone = new THREE.Mesh(cGeo, cMat);
-  _frustumCone.rotation.x = Math.PI; // point down
-  _frustumCone.position.y = -1.4;
+  const g = new THREE.ConeGeometry(1.4, 2.8, 8, 1, true);
 
-  const eMat = new THREE.LineBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0.4 });
-  _frustumEdge = new THREE.LineSegments(new THREE.EdgesGeometry(cGeo), eMat);
+  _frustumCone = _mk(g, new THREE.MeshBasicMaterial({
+    color: C.CYAN, transparent: true, opacity: 0.07,
+    side: THREE.DoubleSide, depthWrite: false
+  }));
+  _frustumCone.rotation.x = Math.PI;
+  _frustumCone.position.y = -1.4;
+  _drone.add(_frustumCone);
+
+  _frustumEdge = new THREE.LineSegments(
+    new THREE.EdgesGeometry(g),
+    new THREE.LineBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0.4 })
+  );
   _frustumEdge.rotation.x = Math.PI;
   _frustumEdge.position.y = -1.4;
-
-  _drone.add(_frustumCone);
   _drone.add(_frustumEdge);
 
   _frustumCone.visible = false;
@@ -432,14 +497,20 @@ function _buildFrustum() {
 /* ═══════════════════════════════════════════════════════════════════
    PATH VISUALS
    ═══════════════════════════════════════════════════════════════════ */
-function _buildPathVisuals() {
+function _buildPaths() {
   const pM = new THREE.LineBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0 });
-  _pathLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(NAV_WPS.map(v => v.clone())), pM);
+  _pathLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(NAV_WPS.map(v => v.clone())),
+    pM
+  );
   _pathLine.visible = false;
   _scene.add(_pathLine);
 
   NAV_WPS.forEach((pt, i) => {
-    const sm = new THREE.MeshBasicMaterial({ color: i === NAV_WPS.length-1 ? C.GREEN : C.CYAN, transparent: true, opacity: 0 });
+    const sm = new THREE.MeshBasicMaterial({
+      color: i === NAV_WPS.length - 1 ? C.GREEN : C.CYAN,
+      transparent: true, opacity: 0
+    });
     const s = _mk(new THREE.SphereGeometry(0.14, 8, 6), sm);
     s.position.copy(pt);
     s.visible = false;
@@ -448,7 +519,10 @@ function _buildPathVisuals() {
   });
 
   const bM = new THREE.LineBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0 });
-  _bciPathLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(BCI_WPS.map(v => v.clone())), bM);
+  _bciPathLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(BCI_WPS.map(v => v.clone())),
+    bM
+  );
   _bciPathLine.visible = false;
   _scene.add(_bciPathLine);
 }
@@ -460,7 +534,7 @@ function _buildTarget() {
   const tgt = BCI_WPS[BCI_WPS.length - 1];
 
   _targetHalo = _mk(
-    new THREE.RingGeometry(0.55, 0.8, 32),
+    new THREE.RingGeometry(0.55, 0.82, 32),
     new THREE.MeshBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0, side: THREE.DoubleSide })
   );
   _targetHalo.rotation.x = -Math.PI / 2;
@@ -496,54 +570,283 @@ function _buildBCIBeam() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   OPERATOR PANEL (DOM overlay in HUD)
+   OPERATOR PANEL (DOM)
    ═══════════════════════════════════════════════════════════════════ */
+/* ── helpers for Phase-0 camera frames ─────────────────────────── */
+function _makeCamFrameCanvas(idx, totalFrames) {
+  const W = 192, H = 128;
+  const cv  = document.createElement('canvas');
+  cv.width  = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+
+  const camAngleDeg = Math.round((idx / totalFrames) * 360);
+
+  /* Background */
+  ctx.fillStyle = '#060a14';
+  ctx.fillRect(0, 0, W, H);
+
+  /* Slight vignette */
+  const vg = ctx.createRadialGradient(W/2, H/2, H*0.2, W/2, H/2, H*0.75);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+
+  /* Stylised interior perspective — simple vanishing-point line-art */
+  const a  = (camAngleDeg / 360) * Math.PI * 2;
+  const cx = W / 2 + Math.cos(a) * 18;
+  const cy = H / 2 - 4;
+  ctx.strokeStyle = 'rgba(0,208,220,0.35)';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([3, 4]);
+  /* floor + walls radiating from vanishing point */
+  const rays = 8;
+  for (let r = 0; r < rays; r++) {
+    const ra = (r / rays) * Math.PI * 1.6 - Math.PI * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(ra) * W, cy + Math.sin(ra) * H);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  /* Horizontal depth lines */
+  ctx.strokeStyle = 'rgba(0,208,220,0.18)';
+  ctx.lineWidth = 0.6;
+  for (let d = 1; d <= 4; d++) {
+    const f  = d / 5;
+    const hw = W * f * 0.5;
+    const hh = H * f * 0.38;
+    ctx.strokeRect(cx - hw, cy - hh, hw * 2, hh * 2);
+  }
+
+  /* Cyan corner bracket overlay */
+  ctx.strokeStyle = '#00D0DC';
+  ctx.lineWidth   = 1.8;
+  const bk = 14;
+  [[4,4],[W-4,4],[4,H-4],[W-4,H-4]].forEach(([bx, by]) => {
+    const sx = bx < W/2 ? 1 : -1, sy = by < H/2 ? 1 : -1;
+    ctx.beginPath(); ctx.moveTo(bx, by + sy*bk); ctx.lineTo(bx, by); ctx.lineTo(bx + sx*bk, by); ctx.stroke();
+  });
+
+  /* Thin outer border */
+  ctx.strokeStyle = 'rgba(0,208,220,0.45)';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(1.5, 1.5, W-3, H-3);
+
+  /* Scan-line texture */
+  ctx.fillStyle = 'rgba(0,208,220,0.028)';
+  for (let y = 0; y < H; y += 3) { ctx.fillRect(0, y, W, 1); }
+
+  /* ID label bottom-left */
+  ctx.fillStyle = '#00D0DC';
+  ctx.font      = 'bold 10px monospace';
+  ctx.fillText(`CAM_${String(idx+1).padStart(2,'0')}`, 7, H - 18);
+  ctx.fillStyle = 'rgba(0,208,220,0.6)';
+  ctx.font      = '9px monospace';
+  ctx.fillText(`θ ${camAngleDeg}° | NeRF INPUT`, 7, H - 7);
+
+  /* Tiny REC dot top-right */
+  ctx.fillStyle = '#FF6B35';
+  ctx.beginPath(); ctx.arc(W-10, 10, 4, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,107,53,0.3)';
+  ctx.beginPath(); ctx.arc(W-10, 10, 7, 0, Math.PI*2); ctx.fill();
+
+  return cv;
+}
+
+function _buildImageFrames() {
+  _imgFrames = [];
+  const N = 20;
+  const rng = (a, b) => a + Math.random() * (b - a);
+
+  for (let i = 0; i < N; i++) {
+    const cv  = _makeCamFrameCanvas(i, N);
+    const tex = new THREE.CanvasTexture(cv);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, opacity: 0,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 1.87), mat);
+
+    /* Spread start positions in a shell around the scene */
+    const phi   = Math.acos(2 * rng(0,1) - 1);
+    const theta = rng(0, Math.PI * 2);
+    const r     = rng(14, 22);
+    const sx    = r * Math.sin(phi) * Math.cos(theta);
+    const sy    = rng(3, 12);
+    const sz    = r * Math.sin(phi) * Math.sin(theta);
+
+    mesh.position.set(sx, sy, sz);
+    mesh.rotation.set(rng(-0.4, 0.4), rng(0, Math.PI*2), rng(-0.3, 0.3));
+    mesh.visible = false;
+
+    _scene.add(mesh);
+    _imgFrames.push({
+      mesh,
+      startPos: new THREE.Vector3(sx, sy, sz),
+      startRot: mesh.rotation.clone(),
+      delay:    i * 0.22,   // staggered reveal
+    });
+  }
+}
+
+function _buildOperatorFigure() {
+  const fig = new THREE.Group();
+
+  const skinMat  = new THREE.MeshLambertMaterial({ color: 0xf0c090 });
+  const bodyMat  = new THREE.MeshLambertMaterial({ color: 0x2d4a6e });
+  const legMat   = new THREE.MeshLambertMaterial({ color: 0x1a2a40 });
+  const eegMat   = new THREE.MeshBasicMaterial({ color: C.CYAN });
+
+  /* Head */
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 8), skinMat);
+  head.position.y = 1.78;
+  fig.add(head);
+
+  /* Torso */
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.24, 0.85, 8), bodyMat);
+  torso.position.y = 1.12;
+  fig.add(torso);
+
+  /* Legs */
+  const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.72, 6), legMat);
+  legL.position.set(-0.13, 0.36, 0);
+  fig.add(legL);
+  const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.72, 6), legMat);
+  legR.position.set( 0.13, 0.36, 0);
+  fig.add(legR);
+
+  /* Arms — left arm slightly raised as if pointing */
+  const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.68, 6), bodyMat);
+  armL.position.set(-0.32, 1.2, 0);
+  armL.rotation.z = 0.5;
+  fig.add(armL);
+  const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.68, 6), bodyMat);
+  armR.position.set( 0.32, 1.2, 0);
+  armR.rotation.z = -0.22;
+  fig.add(armR);
+
+  /* EEG headband */
+  const bandMat = new THREE.MeshBasicMaterial({ color: C.CYAN, transparent: true, opacity: 0.85 });
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.045, 6, 24, Math.PI * 1.1), bandMat);
+  band.position.y = 1.80;
+  band.rotation.z = Math.PI;
+  fig.add(band);
+
+  /* EEG electrodes */
+  const ePositions = [
+    [-0.30, 1.80, 0],
+    [ 0.30, 1.80, 0],
+    [ 0,    2.08, 0],
+  ];
+  ePositions.forEach(([x, y, z]) => {
+    const e = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 4), eegMat);
+    e.position.set(x, y, z);
+    fig.add(e);
+  });
+
+  /* Signal glow aura (pulsed during BCI phase) */
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: C.CYAN, transparent: true, opacity: 0.0,
+    side: THREE.DoubleSide, depthWrite: false,
+  });
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.95, 14, 10), glowMat);
+  glow.position.y = 1.1;
+  fig.add(glow);
+  _operatorGlowMesh = glow;
+
+  /* Ground shadow disc */
+  const shadowMat = new THREE.MeshBasicMaterial({
+    color: 0x000814, transparent: true, opacity: 0.35,
+    depthWrite: false,
+  });
+  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 16), shadowMat);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.01;
+  fig.add(shadow);
+
+  /* Label — small floating text sprite above head */
+  const canvas  = document.createElement('canvas');
+  canvas.width  = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 256, 64);
+  ctx.fillStyle = 'rgba(0,208,220,0.85)';
+  ctx.font = 'bold 22px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('BCI OPERATOR', 128, 40);
+  const labelTex = new THREE.CanvasTexture(canvas);
+  const labelMat = new THREE.SpriteMaterial({ map: labelTex, transparent: true, opacity: 0.9, depthTest: false });
+  const label = new THREE.Sprite(labelMat);
+  label.scale.set(2.0, 0.5, 1);
+  label.position.y = 2.55;
+  fig.add(label);
+
+  /* Place just outside the building's front entrance, foreground of camera */
+  fig.position.copy(OPERATOR_POS);
+  fig.position.y = 0;
+  /* Face slightly toward the building interior (-Z, slight -X lean) */
+  fig.rotation.y = Math.PI * 0.92;
+
+  _scene.add(fig);
+  _operatorFigure = fig;
+}
+
 function _buildOperatorPanel(hudContainer) {
   if (!hudContainer) return;
   const root = hudContainer.parentElement || hudContainer;
 
+  /* Clean up any previously injected panel */
+  root.querySelector('#nn-operator')?.remove();
+  root.querySelector('#nn-target-label')?.remove();
+
   const op = document.createElement('div');
   op.id = 'nn-operator';
   op.style.cssText = `
-    position:absolute; top:10px; right:10px; z-index:20;
-    background:rgba(6,10,16,0.88);
-    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-    border:1px solid rgba(0,208,220,0.3); border-radius:8px;
-    padding:10px 14px; min-width:190px;
+    position:absolute; top:12px; right:12px; z-index:20;
+    background:rgba(6,10,18,0.92);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    border:1.5px solid rgba(0,208,220,0.4); border-radius:10px;
+    box-shadow:0 0 24px rgba(0,208,220,0.12), inset 0 0 12px rgba(0,208,220,0.04);
+    padding:14px 18px; min-width:250px;
     font-family:'DM Sans',sans-serif;
-    opacity:0; transition:opacity 0.4s ease; pointer-events:none;
+    opacity:0; transition:opacity 0.5s ease; pointer-events:none;
+    display:flex; flex-direction:column; gap:10px;
   `;
   op.innerHTML = `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
-      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
-        <circle cx="15" cy="12" r="7" stroke="#00D0DC" stroke-width="1.3" fill="rgba(0,208,220,0.07)"/>
-        <path d="M8 12 Q7 7 15 6 Q23 7 22 12" stroke="#00D0DC" stroke-width="1.3" fill="none"/>
-        <circle cx="8"  cy="12" r="1.8" fill="#00D0DC"/>
-        <circle cx="22" cy="12" r="1.8" fill="#00D0DC"/>
-        <circle cx="15" cy="5"  r="1.8" fill="#00D0DC"/>
-        <path d="M11 19 Q15 22 19 19" stroke="#3d5070" stroke-width="1" fill="none"/>
-        <line x1="15" y1="19" x2="15" y2="29" stroke="#3d5070" stroke-width="1"/>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <svg width="40" height="40" viewBox="0 0 32 32" fill="none">
+        <circle cx="16" cy="13" r="7.5" stroke="#00D0DC" stroke-width="1.3" fill="rgba(0,208,220,0.07)"/>
+        <path d="M8.5 13 Q7.5 7.5 16 6.5 Q24.5 7.5 23.5 13" stroke="#00D0DC" stroke-width="1.3" fill="none"/>
+        <circle cx="8.5"  cy="13" r="2" fill="#00D0DC"/>
+        <circle cx="23.5" cy="13" r="2" fill="#00D0DC"/>
+        <circle cx="16"   cy="6"  r="2" fill="#00D0DC"/>
+        <path d="M12 21 Q16 24 20 21" stroke="#405070" stroke-width="1" fill="none"/>
+        <line x1="16" y1="21" x2="16" y2="31" stroke="#405070" stroke-width="1"/>
       </svg>
       <div>
-        <div style="color:#6b7a96;font-size:9px;letter-spacing:.12em;text-transform:uppercase;">Operator / BCI</div>
-        <div id="nn-bci-label" style="color:#00D0DC;font-weight:700;font-size:11px;letter-spacing:.04em;">READY</div>
+        <div style="color:#6b7a96;font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:3px;">Operator / BCI</div>
+        <div id="nn-bci-label" style="color:#00D0DC;font-weight:700;font-size:14px;letter-spacing:.05em;">BCI READY</div>
       </div>
     </div>
     <div id="nn-intent-box" style="
-      background:rgba(0,208,220,0.07); border:1px solid rgba(0,208,220,0.2);
-      border-radius:5px; padding:6px 9px;
-      color:#c8d8ee; font-size:10px; font-weight:600; letter-spacing:.03em; line-height:1.45;
+      background:rgba(0,208,220,0.08); border:1px solid rgba(0,208,220,0.28);
+      border-radius:6px; padding:8px 11px;
+      color:#c8d8ee; font-size:11px; font-weight:600; letter-spacing:.03em; line-height:1.5;
+      transition:all 0.3s ease;
     ">EEG intent: STANDBY</div>
   `;
   root.appendChild(op);
   _operatorEl = op;
   _intentEl   = op.querySelector('#nn-intent-box');
+  _bciLabelEl = op.querySelector('#nn-bci-label');
 }
 
 /* ═══════════════════════════════════════════════════════════════════
    RENDER LOOP
    ═══════════════════════════════════════════════════════════════════ */
-function _loop() {
+function _renderLoop() {
   let lastNow = performance.now();
   function frame(now) {
     if (_disposed) return;
@@ -552,17 +855,17 @@ function _loop() {
     lastNow   = now;
     const dt  = Math.min(wdt, 0.05);
 
-    /* Rotor spin */
+    /* Rotors */
     _rotors.forEach((r, i) => {
       r.rotation.z += THREE.MathUtils.degToRad(240) * dt * (i % 2 ? -1 : 1);
     });
 
-    /* Glow ring pulse */
-    if (_glowRing) _glowRing.material.opacity = 0.35 + Math.sin(now * 0.004) * 0.18;
+    /* Glow ring */
+    if (_glowRing) _glowRing.material.opacity = 0.3 + Math.sin(now * 0.004) * 0.18;
 
-    /* Cyan point light tracks drone */
-    if (_droneCyanLight && _drone) {
-      _droneCyanLight.position.set(_drone.position.x, _drone.position.y + 1, _drone.position.z);
+    /* Cyan light tracks drone */
+    if (_cyanLight && _drone) {
+      _cyanLight.position.set(_drone.position.x, _drone.position.y + 1.2, _drone.position.z);
     }
 
     /* EEG waveform */
@@ -571,8 +874,8 @@ function _loop() {
     /* Sequence */
     if (_playing) { _seqT += dt; _tick(dt); }
 
-    /* Chase camera — ALWAYS follows drone, no exceptions */
-    _chaseCamera(dt);
+    /* Camera */
+    _followCam(dt);
 
     _rdr.render(_scene, _cam);
   }
@@ -580,239 +883,340 @@ function _loop() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   FIXED OVERHEAD CAMERA — does not move at all.
-   Positioned high above the scene looking straight down with a
-   slight forward tilt so walls read in 3-D perspective.
+   ISOMETRIC FOLLOW CAMERA
+   Stays 8–11 units behind-above drone, so environment is always visible.
+   Never gets inside geometry because it follows at a fixed world-space
+   offset (not relative to drone yaw), only softly tracking position.
    ═══════════════════════════════════════════════════════════════════ */
-function _chaseCamera(_dt) {
-  /* Camera is fully static — position and lookAt set once at init/reset.
-     This function intentionally does nothing every frame. */
+function _followCam(dt) {
+  if (!_drone || !_cam) return;
+
+  const dp   = _drone.position;
+  const yaw  = _drone.rotation.y;
+
+  /* Blend between isometric (phase 1) and follow (phase 2+) */
+  const followStrength = _phase >= 2 ? 0.55 : 0.25;
+
+  /* Camera leans slightly behind drone's heading but stays mostly isometric */
+  const sinY = Math.sin(yaw);
+  const cosY = Math.cos(yaw);
+
+  /* Base offset: higher up, centered over the scene */
+  const baseOff = new THREE.Vector3(0, 14, 10);
+  /* Follow nudge: slight lean behind drone heading */
+  const nudge   = new THREE.Vector3(sinY * 1.2, 0, cosY * 1.2);
+
+  const ideal = new THREE.Vector3(
+    dp.x + baseOff.x + nudge.x * followStrength,
+    dp.y + baseOff.y,
+    dp.z + baseOff.z + nudge.z * followStrength,
+  );
+
+  /* Hard clamp */
+  ideal.x = Math.max(-5, Math.min(5, ideal.x));
+  ideal.z = Math.max(-4, Math.min(13, ideal.z));
+  ideal.y = Math.max(dp.y + 11, ideal.y);
+
+  _cam.position.lerp(ideal, dt * 1.8);
+
+  /* Look at drone + small forward bias */
+  const lookAt = new THREE.Vector3(
+    dp.x - sinY * 1.0,
+    dp.y + 0.3,
+    dp.z - cosY * 1.0,
+  );
+  _cam.lookAt(lookAt);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   SEQUENCE CONTROLLER
+   SEQUENCE
    ═══════════════════════════════════════════════════════════════════ */
 function _tick(dt) {
-  const now = _seqT;
-  const P1  = T.SCAN;
-  const P2  = P1 + T.NAV;
-  const P3  = P2 + T.BCI;
+  const t  = _seqT;
+  /* Phase boundaries */
+  const P0 = 0;                    // 0  — Phase 0 start (IMGS)
+  const P1 = P0 + DUR.IMGS;       // 7  — Phase 1 start (NAV / route reveal)
+  const P2 = P1 + DUR.NAV;        // 16 — Phase 2 start (FLY)
+  const P3 = P2 + DUR.FLY;        // 24 — end of flight
 
-  /* ──────────────────────────────────────────────────────────────
-     PHASE 1  (0 → P1)  Drone scans, voxels build
-     ────────────────────────────────────────────────────────────── */
-  if (now < P1) {
-    const p = now / P1;
+  /* ── PHASE 0: 2-D IMAGES → 3-D MAP RECONSTRUCTION  (0–7 s) ──
+     0.0–1.5s : frames fade in at scattered positions (staggered)
+     1.5–4.5s : frames orbit inward toward scene centre
+     4.5–6.5s : frames converge + dissolve, voxels materialise
+     6.5–7.0s : brief pause with fully-built voxel map
+     ──────────────────────────────────────────────────────────── */
+  if (t < P1) {
+    const loc = t - P0;
 
     if (_phase < 1) {
       _phase = 1;
-      _frustumCone.visible = true;
-      _frustumEdge.visible = true;
-      _hud('scanning', 'SCANNING', 'Building 3D map…');
+      _hud('standby', 'PROCESSING', 'Reconstructing 3-D scene from images…');
     }
 
-    /* Fly scanning patrol */
-    _flyPath(SCAN_WPS, p, dt);
+    /* Scene centre (where frames converge) */
+    const sceneCentre = new THREE.Vector3(0, 3.5, -1);
 
-    /* Frustum flicker */
-    _frustumCone.material.opacity = 0.07 + Math.abs(Math.sin(now * 4)) * 0.06;
-    _frustumEdge.material.opacity = 0.35 + Math.abs(Math.sin(now * 4)) * 0.2;
+    _imgFrames.forEach((f, i) => {
+      const showAt = f.delay;           // staggered reveal time
+      if (loc < showAt) return;
 
-    /* Reveal voxels */
-    const tgt = Math.floor(p * _voxQueue.length);
-    while (_voxBatch < tgt && _voxBatch < _voxQueue.length) {
-      _voxQueue[_voxBatch].visible = true;
-      _voxQueue[_voxBatch].material.opacity = 0;
-      _voxBatch++;
+      const age = loc - showAt;
+      f.mesh.visible = true;
+
+      /* 0–1.5s relative: fade in at start pos */
+      if (age < 1.5) {
+        f.mesh.material.opacity = Math.min(age / 1.0, 0.85);
+        /* gentle tumble */
+        f.mesh.rotation.y += dt * 0.4;
+        return;
+      }
+
+      /* 1.5s–4s: fly toward scene centre, slow orbit */
+      const flyAge = age - 1.5;
+      const flyDur = 2.8;
+      if (flyAge < flyDur) {
+        const fp = flyAge / flyDur;
+        const easedFp = fp < 0.5 ? 2*fp*fp : -1+(4-2*fp)*fp; // ease-in-out
+        f.mesh.position.lerpVectors(f.startPos, sceneCentre.clone().add(
+          new THREE.Vector3(
+            Math.cos((i/20)*Math.PI*2 + loc*0.5) * (3.5 * (1 - easedFp)),
+            Math.sin((i/20)*Math.PI*2 + loc*0.4) * (2.0 * (1 - easedFp)),
+            Math.sin((i/20)*Math.PI*2 + loc*0.3) * (3.5 * (1 - easedFp))
+          )
+        ), dt * 1.6);
+        f.mesh.rotation.y += dt * (0.9 - easedFp * 0.7);
+        f.mesh.material.opacity = 0.85;
+        return;
+      }
+
+      /* 4s+: converge to exact centre and fade out while voxels appear */
+      const fadeAge = flyAge - flyDur;
+      const fadeDur = 2.0;
+      const fadeFrac = Math.min(fadeAge / fadeDur, 1.0);
+      f.mesh.position.lerp(sceneCentre, dt * 3.5);
+      f.mesh.material.opacity = Math.max(0, 0.85 * (1 - fadeFrac));
+      f.mesh.scale.setScalar(1.0 - fadeFrac * 0.4);
+      f.mesh.rotation.y += dt * 1.2;
+    });
+
+    /* ── Environment reconstruction, 3 stages ──────────────────────
+       Stage 1 (1.5–3.5s): Edge wireframes fade in  → structure appears
+       Stage 2 (3.5–5.5s): Solid surfaces fill in   → geometry solidifies
+       Stage 3 (4.5–6.5s): Voxels overlay materialise → digital twin done
+       ────────────────────────────────────────────────────────────── */
+    const edgeP  = Math.max(0, Math.min(1, (loc - 1.5) / 2.0));  // 1.5→3.5
+    const solidP = Math.max(0, Math.min(1, (loc - 3.5) / 2.0));  // 3.5→5.5
+    const voxP   = Math.max(0, Math.min(1, (loc - 4.5) / 2.0));  // 4.5→6.5
+
+    _envEdges.forEach(o => {
+      [o.material].flat().forEach(m => { m.opacity = edgeP * 0.9; });
+    });
+    _envSolids.forEach(o => { o.material.opacity = solidP; });
+    _voxGrp.children.forEach(v => { v.material.opacity = voxP * 0.55; });
+
+    /* HUD steps through the reconstruction stages */
+    if (loc < 1.5) {
+      _hud('standby', 'PROCESSING', 'Ingesting 2-D camera images…');
+    } else if (loc < 3.5) {
+      _hud('scanning', 'RECONSTRUCTING', 'Building scene geometry…');
+    } else if (loc < 5.5) {
+      _hud('active', 'VOLUMETRIC MAP', 'Generating digital twin…');
+    } else {
+      _hud('active', 'MAP COMPLETE', 'NeRF scene ready');
     }
-    const fw = 50;
-    for (let i = Math.max(0, _voxBatch - fw); i < _voxBatch; i++) {
-      const v = _voxQueue[i];
-      if (v.material.opacity < 0.62) v.material.opacity += dt * 1.8;
-    }
 
-    if (_cmdHudEl) _cmdHudEl.textContent = `MAP ${Math.round(p * 100)}%`;
+    /* Camera gently pulls inward to scene during IMGS phase */
+    const sp = NAV_WPS[0];
+    const camTargetY  = (FH + 18) - voxP * 4;
+    const camTargetZ  = (sp.z + 14) - voxP * 4;
+    _cam.position.y   = THREE.MathUtils.lerp(_cam.position.y, camTargetY, dt * 0.8);
+    _cam.position.z   = THREE.MathUtils.lerp(_cam.position.z, camTargetZ, dt * 0.8);
+    _cam.lookAt(sp.x, FH, sp.z - 2);
+
+    /* Drone hovers at start position */
+    _drone.position.copy(NAV_WPS[0]);
+    _drone.position.y = FH + Math.sin(_seqT * 1.8) * 0.05;
+
     return;
   }
 
-  /* ──────────────────────────────────────────────────────────────
-     PHASE 2  (P1 → P2)  Path drawn, drone navigates
-     ────────────────────────────────────────────────────────────── */
-  if (now < P2) {
-    const loc = now - P1;
-    const p   = loc / T.NAV;
+  /* ── PHASE 1: ROUTE REVEAL + BCI COMMAND (drone stationary) ──
+     0–3s   : full route path draws on screen, target appears
+     3–5s   : operator panel fades in, BCI READY
+     5–7s   : operator fires beam → drone receives command
+     7–9s   : drone glows, countdown to launch
+     Drone does NOT move at all in this phase.
+     ──────────────────────────────────────────────────────────── */
+  if (t < P2) {
+    const loc = t - P1;
 
     if (_phase < 2) {
       _phase = 2;
-      _frustumCone.visible = false;
-      _frustumEdge.visible = false;
       _drone.position.copy(NAV_WPS[0]);
 
-      _pathLine.visible = true;
-      _pathLine.material.opacity = 0;
-      _animPath(NAV_WPS, 0, _pathLine);
-      _hud('active', 'NAVIGATE', 'Collision-aware route…');
+      /* Hide any lingering image frames */
+      _imgFrames.forEach(f => { f.mesh.visible = false; });
+
+      /* Ensure environment and voxels are fully visible */
+      _envEdges.forEach(o => { [o.material].flat().forEach(m => { m.opacity = 0.9; }); });
+      _envSolids.forEach(o => { o.material.opacity = 1.0; });
+      _voxGrp.children.forEach(v => { v.material.opacity = 0.55; });
+
+      /* Paths start hidden — they draw AFTER the BCI command lands */
+      _pathLine.visible    = false;  _pathLine.material.opacity    = 0;
+      _bciPathLine.visible = false;  _bciPathLine.material.opacity = 0;
+      _ptSpheres.forEach(s => { s.visible = false; s.material.opacity = 0; });
+
+      /* Target appears immediately so viewer knows what the operator is targeting */
+      _targetHalo.visible   = true;  _targetHalo.material.opacity   = 0;
+      _targetBeacon.visible = true;  _targetBeacon.material.opacity = 0;
+
+      if (_operatorEl) _operatorEl.style.opacity = '0';
+      _hud('standby', 'BCI READY', 'Operator preparing command…');
     }
 
-    /* Draw path progressively in first 35% */
-    if (p < 0.4) {
-      _animPath(NAV_WPS, p / 0.4, _pathLine);
-      _pathLine.material.opacity = Math.min(p / 0.2, 0.9);
+    /* Target pulses throughout */
+    _targetHalo.material.opacity   = Math.min(_targetHalo.material.opacity   + dt * 1.5, 0.45 + Math.sin(_seqT * 5.5) * 0.2);
+    _targetHalo.rotation.z        += dt * 0.38;
+    _targetBeacon.material.opacity = Math.min(_targetBeacon.material.opacity + dt * 1.0, 0.3 + Math.sin(_seqT * 3.2) * 0.1);
+
+    /* Drone hovers in place throughout this phase */
+    _drone.position.y = FH + Math.sin(_seqT * 2) * 0.06;
+
+    /* ── 0–2s: Operator panel fades in, BCI READY ── */
+    if (loc < 2.0) {
+      const fp = loc / 2.0;
+      if (_operatorEl) _operatorEl.style.opacity = String(Math.min(fp / 0.4, 1));
+      _hud('standby', 'BCI READY', 'Operator preparing command…');
+      _setIntent('EEG intent: STANDBY', false);
+      if (_bciLabelEl) _bciLabelEl.textContent = 'BCI READY';
     }
 
-    /* Waypoint spheres */
-    _ptSpheres.forEach((s, i) => {
-      if (p > i / _ptSpheres.length * 0.35) {
-        s.visible = true;
-        s.material.opacity = Math.min(s.material.opacity + dt * 2.5, 0.9);
+    /* ── 2–4.5s: Beam fires — operator sends command to drone ── */
+    if (loc >= 2.0 && loc < 4.5) {
+      _hud('veto', 'COMMAND SENT', 'TARGET ACQUIRED');
+      _setIntent('EEG intent: MOVE TO TARGET AREA', true);
+      if (_bciLabelEl) _bciLabelEl.textContent = 'COMMAND SENT';
+
+      _bciBeam.visible  = true;
+      _bciPulse.visible = true;
+      const src = OPERATOR_POS.clone();
+      const dst = _drone.position.clone().add(new THREE.Vector3(0, 0.4, 0));
+      _bciBeam.geometry.setFromPoints([src, dst]);
+      _bciBeamMat.opacity = 0.75;
+
+      const pt = ((loc - 2.0) / 2.5) % 1.0;
+      _bciPulse.position.lerpVectors(src, dst, pt);
+      _bciPulseMat.opacity = 0.9 - pt * 0.5;
+
+      if (_operatorGlowMesh) {
+        _operatorGlowMesh.material.opacity = 0.15 + Math.sin(Date.now() * 0.007) * 0.12;
       }
-    });
+    }
 
-    /* Drone follows nav path */
-    if (p >= 0.3) _flyPath(NAV_WPS, (p - 0.3) / 0.7, dt);
-    else _drone.position.y = FH + Math.sin(_seqT * 2) * 0.06;
+    /* ── 4.5–6s: Drone receives command — glows, beam fades ── */
+    if (loc >= 4.5 && loc < 6.0) {
+      const gp = loc - 4.5;
+      _droneGlow.material.opacity = Math.sin(Math.min(gp / 1.5, 1.0) * Math.PI) * 0.55;
+      _bciBeamMat.opacity  = Math.max(0, 0.75 - gp * 0.9);
+      _bciPulseMat.opacity = Math.max(0, 0.5  - gp * 0.7);
+      if (_operatorGlowMesh) _operatorGlowMesh.material.opacity = Math.max(0, 0.27 - gp * 0.2);
+      if (gp > 0.85) { _bciBeam.visible = false; _bciPulse.visible = false; }
+      _hud('active', 'COMMAND RECEIVED', 'Computing optimal route…');
+      if (_bciLabelEl) _bciLabelEl.textContent = 'COMPUTING ROUTE';
+      _setIntent('EEG intent: MOVE TO TARGET AREA', true);
+    }
+
+    /* ── 6–9s: Route traces on screen (drone computed path post-command) ── */
+    if (loc >= 6.0) {
+      if (!_pathLine.visible) {
+        _pathLine.visible    = true;
+        _bciPathLine.visible = true;
+      }
+      const dp = Math.min((loc - 6.0) / 3.0, 1.0);
+      _drawPath(NAV_WPS, dp, _pathLine);
+      _pathLine.material.opacity = Math.min(dp / 0.2, 0.9);
+      _drawPath(BCI_WPS, dp, _bciPathLine);
+      _bciPathLine.material.opacity = Math.min(dp / 0.2, 0.7);
+      _ptSpheres.forEach((s, i) => {
+        if (dp > i / _ptSpheres.length) {
+          s.visible = true;
+          s.material.opacity = Math.min(s.material.opacity + dt * 3.0, 0.9);
+        }
+      });
+      _hud('active', 'ROUTE COMPUTED', 'Launching…');
+      if (_bciLabelEl) _bciLabelEl.textContent = 'LAUNCHING';
+      _droneGlow.material.opacity = Math.max(0, _droneGlow.material.opacity - dt * 0.4);
+    }
 
     return;
   }
 
-  /* ──────────────────────────────────────────────────────────────
-     PHASE 3  (P2 → P3)  BCI → intent label → target
-     ────────────────────────────────────────────────────────────── */
-  if (now < P3) {
-    const loc = now - P2;
-    const p   = loc / T.BCI;
+  /* ── PHASE 2: DRONE FLIES FULL ROUTE ────────────────────────── */
+  if (t < P3) {
+    const loc = t - P2;
+    const p   = loc / DUR.FLY;
 
     if (_phase < 3) {
       _phase = 3;
-      _drone.position.copy(NAV_WPS[NAV_WPS.length - 1]);
-
-      /* Show operator panel */
-      if (_operatorEl) _operatorEl.style.opacity = '1';
-
-      /* Show target */
-      _targetHalo.visible   = true;
-      _targetBeacon.visible = true;
-    }
-
-    /* Pulse target */
-    _targetHalo.material.opacity   = 0.45 + Math.sin(_seqT * 5.5) * 0.2;
-    _targetHalo.rotation.z        += dt * 0.4;
-    _targetBeacon.material.opacity  = 0.3 + Math.sin(_seqT * 3)   * 0.12;
-
-    /* Sub-phases */
-
-    /* 0..1.5s: BCI builds up, waveform shows */
-    if (loc < 1.5) {
-      _hud('scanning', 'BCI READY', 'Awaiting command…');
-      _setIntent('EEG intent: STANDBY', false);
-      const lbl = _operatorEl?.querySelector('#nn-bci-label');
-      if (lbl) lbl.textContent = 'BCI READY';
-    }
-
-    /* 1.5..3.5s: Command fires — beam + intent label */
-    if (loc >= 1.5 && loc < 3.5) {
-      _hud('veto', 'COMMAND SENT', 'TARGET ACQUIRED');
-      _setIntent('EEG intent: MOVE TO TARGET AREA', true);
-      const lbl = _operatorEl?.querySelector('#nn-bci-label');
-      if (lbl) lbl.textContent = 'COMMAND SENT';
-
-      /* Beam from operator-corner toward drone */
-      _bciBeam.visible  = true;
-      _bciPulse.visible = true;
-      const src = new THREE.Vector3(_drone.position.x + 5, _drone.position.y + 4, _drone.position.z + 4);
-      const dst = _drone.position.clone();
-      _bciBeam.geometry.setFromPoints([src, dst]);
-      _bciBeamMat.opacity = 0.6;
-
-      const pt = ((loc - 1.5) / 2.0) % 1.0;
-      _bciPulse.position.lerpVectors(src, dst, pt);
-      _bciPulseMat.opacity = 0.9 - pt * 0.5;
-    }
-
-    /* 3.5..4.5s: Drone glows on receive */
-    if (loc >= 3.5 && loc < 4.5) {
-      const gp = (loc - 3.5);
-      _droneGlow.material.opacity = Math.sin(gp * Math.PI) * 0.45;
-      _bciBeamMat.opacity  = Math.max(0, 0.6 - (gp / 1.0) * 0.6);
-      _bciPulseMat.opacity = Math.max(0, 0.5 - (gp / 1.0) * 0.5);
-      if (gp > 0.9) { _bciBeam.visible = false; _bciPulse.visible = false; }
-      _setIntent('EEG intent: MOVE TO TARGET AREA', true);
-    }
-
-    /* 4.5..8s: BCI path draws + drone flies to target */
-    if (loc >= 4.5) {
-      _droneGlow.material.opacity = Math.max(0, _droneGlow.material.opacity - dt * 1.5);
-      _setIntent('EEG intent: MOVE TO TARGET AREA', true);
-
-      _bciPathLine.visible = true;
-      const drawP = Math.min((loc - 4.5) / 1.5, 1.0);
-      _animPath(BCI_WPS, drawP, _bciPathLine);
-      _bciPathLine.material.opacity = Math.min(_bciPathLine.material.opacity + dt * 3, 0.9);
-
-      if (loc > 5.5) {
-        const flyP = Math.min((loc - 5.5) / (T.BCI - 5.5), 1.0);
-        _flyPath(BCI_WPS, flyP, dt);
-      }
-
-      const lbl = _operatorEl?.querySelector('#nn-bci-label');
-      if (lbl && loc > 5) lbl.textContent = 'EN ROUTE';
+      _drone.position.copy(NAV_WPS[0]);
+      _droneGlow.material.opacity = 0;
       _hud('active', 'EN ROUTE', 'Flying to target…');
+      if (_bciLabelEl) _bciLabelEl.textContent = 'EN ROUTE';
     }
+
+    _flyPath(FULL_WPS, p, dt);
+    _setIntent('EEG intent: MOVE TO TARGET AREA', true);
+
+    _targetHalo.material.opacity   = 0.45 + Math.sin(_seqT * 5.5) * 0.22;
+    _targetHalo.rotation.z        += dt * 0.38;
+    _targetBeacon.material.opacity  = 0.3 + Math.sin(_seqT * 3.2) * 0.12;
 
     return;
   }
 
-  /* ──────────────────────────────────────────────────────────────
-     END CARD
-     ────────────────────────────────────────────────────────────── */
+  /* ── END CARD ───────────────────────────────────────────────── */
   if (_phase < 4) {
     _phase = 4;
     _setIntent('EEG intent executed: TARGET REACHED ✓', false);
-    const lbl = _operatorEl?.querySelector('#nn-bci-label');
-    if (lbl) lbl.textContent = 'MISSION COMPLETE';
-    _hud('active', 'TARGET REACHED', '');
     if (_intentEl) _intentEl.style.color = '#22C47B';
+    if (_bciLabelEl) _bciLabelEl.textContent = 'MISSION COMPLETE';
+    _hud('active', 'TARGET REACHED', '');
   }
 
-  /* Hover at target */
-  const tgt = BCI_WPS[BCI_WPS.length - 1];
+  const tgt = FULL_WPS[FULL_WPS.length - 1];
   _drone.position.lerp(new THREE.Vector3(tgt.x, FH, tgt.z), dt * 1.5);
   _drone.position.y = FH + Math.sin(_seqT * 1.5) * 0.08;
 
-  _targetHalo.material.opacity  = 0.3 + Math.sin(_seqT * 2.2) * 0.1;
+  _targetHalo.material.opacity   = 0.3 + Math.sin(_seqT * 2.2) * 0.1;
   _targetBeacon.material.opacity = 0.25 + Math.sin(_seqT * 2.8) * 0.08;
 
-  if (_seqT > P3 + T.HOLD) _playing = false;
+  if (_seqT > P3 + DUR.HOLD) _playing = false;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
    HELPERS
    ═══════════════════════════════════════════════════════════════════ */
-
-/* Smooth drone path follow (progress 0→1) */
 function _flyPath(wps, progress, dt) {
   if (!wps || wps.length < 2) return;
-  const n     = wps.length - 1;
-  const tsc   = Math.min(Math.max(progress, 0), 1) * n;
-  const idx   = Math.min(Math.floor(tsc), n - 1);
-  const next  = Math.min(idx + 1, n);
-  const frc   = tsc - idx;
-  const from  = wps[idx];
-  const to    = wps[next];
-  if (!from || !to) return;
-  const tgt = new THREE.Vector3().lerpVectors(from, to, Math.min(frc, 1));
+  const n    = wps.length - 1;
+  const tsc  = Math.min(Math.max(progress, 0), 1) * n;
+  const idx  = Math.min(Math.floor(tsc), n - 1);
+  const next = Math.min(idx + 1, n);
+  if (!wps[idx] || !wps[next]) return;
+  const tgt = new THREE.Vector3().lerpVectors(wps[idx], wps[next], tsc - idx);
   tgt.y = FH + Math.sin(performance.now() * 0.002) * 0.09;
-  _drone.position.lerp(tgt, dt * 6);
+  _drone.position.lerp(tgt, dt * 5.5);
 
-  /* Face direction of travel */
-  const dir = new THREE.Vector3().subVectors(to, from);
+  const dir = new THREE.Vector3().subVectors(wps[next], wps[idx]);
   if (dir.length() > 0.01) {
-    _drone.rotation.y = THREE.MathUtils.lerp(_drone.rotation.y, Math.atan2(dir.x, dir.z), dt * 5);
+    _drone.rotation.y = THREE.MathUtils.lerp(
+      _drone.rotation.y, Math.atan2(dir.x, dir.z), dt * 4
+    );
   }
 }
 
-/* Progressive path drawing */
-function _animPath(pts, progress, line) {
+function _drawPath(pts, progress, line) {
   const n   = pts.length - 1;
   const drn = Math.min(progress, 1) * n;
   const cnt = Math.floor(drn) + 1;
@@ -823,9 +1227,8 @@ function _animPath(pts, progress, line) {
   if (vis.length >= 2) line.geometry.setFromPoints(vis);
 }
 
-/* HUD update */
 function _hud(state, cmd, alert) {
-  if (_cmdHudEl)   _cmdHudEl.textContent = cmd;
+  if (_cmdHudEl)   _cmdHudEl.textContent  = cmd;
   if (_alertHudEl) _alertHudEl.textContent = alert || '—';
   if (_eegHudEl) {
     _eegHudEl.className = 'nn-eeg-dot';
@@ -837,13 +1240,14 @@ function _hud(state, cmd, alert) {
 
 function _setIntent(text, highlight) {
   if (!_intentEl) return;
-  _intentEl.textContent = text;
-  _intentEl.style.color      = highlight ? '#00D0DC' : '#c8d8ee';
-  _intentEl.style.fontWeight = highlight ? '800' : '600';
-  _intentEl.style.borderColor = highlight ? 'rgba(0,208,220,0.55)' : 'rgba(0,208,220,0.2)';
+  _intentEl.textContent  = text;
+  _intentEl.style.color  = highlight ? '#00D0DC' : '#c8d8ee';
+  _intentEl.style.fontWeight  = highlight ? '800' : '600';
+  _intentEl.style.borderColor = highlight
+    ? 'rgba(0,208,220,0.55)'
+    : 'rgba(0,208,220,0.22)';
 }
 
-/* EEG waveform */
 function _tickWave(dt) {
   const cv = _waveHudEl;
   if (!cv || !(cv instanceof HTMLCanvasElement)) return;
@@ -874,13 +1278,8 @@ function _tickWave(dt) {
   ctx.shadowBlur = 0;
 }
 
-/* Mesh factory */
 function _mk(geo, mat) { return new THREE.Mesh(geo, mat); }
-
-/* Deterministic pseudo-random */
 function _det(x, z) { return Math.abs(Math.sin(x * 127.1 + z * 311.7) * 43758.5 % 1); }
-
-/* Integer color lerp */
 function _lerpc(a, b, t) {
   const ar=(a>>16)&0xff, ag=(a>>8)&0xff, ab=a&0xff;
   const br=(b>>16)&0xff, bg=(b>>8)&0xff, bb=b&0xff;

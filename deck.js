@@ -8,55 +8,27 @@
 // ── STATE ─────────────────────────────────────────────────────────
 const state = {
   current: 1,
-  total: 8,
+  total: 11,
   transitioning: false,
-  revealIndex: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0 },
+  revealIndex: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0 },
   slideInitialized: {},
-  dashboardStep: 0,
-  dashboardMaxStep: 4,
 };
 
 // ── DOM REFS ──────────────────────────────────────────────────────
-const deck        = document.getElementById('deck');
-const slides      = Array.from(document.querySelectorAll('.slide'));
-const prevBtn     = document.getElementById('prevBtn');
-const nextBtn     = document.getElementById('nextBtn');
-const indicators  = document.getElementById('indicators');
-const counter     = document.getElementById('slideCounter');
-const kbHint      = document.getElementById('kbHint');
+const deck    = document.getElementById('deck');
+const slides  = Array.from(document.querySelectorAll('.slide'));
+const counter = document.getElementById('slideCounter');
 
 // ── INIT ──────────────────────────────────────────────────────────
 function init() {
-  buildIndicators();
   updateNav();
   initSlide(1);
   startBackgroundAnimations();
   bindEvents();
 }
 
-// ── INDICATORS ───────────────────────────────────────────────────
-function buildIndicators() {
-  for (let i = 1; i <= state.total; i++) {
-    const dot = document.createElement('button');
-    dot.className = 'indicator' + (i === 1 ? ' active' : '');
-    dot.setAttribute('aria-label', `Go to slide ${i}`);
-    dot.dataset.slide = i;
-    dot.addEventListener('click', () => goToSlide(i));
-    indicators.appendChild(dot);
-  }
-}
-
-function updateIndicators() {
-  document.querySelectorAll('.indicator').forEach((dot, i) => {
-    dot.classList.toggle('active', i + 1 === state.current);
-  });
-}
-
 function updateNav() {
-  prevBtn.disabled = state.current === 1;
-  nextBtn.disabled = state.current === state.total;
-  counter.textContent = `${state.current} / ${state.total}`;
-  updateIndicators();
+  if (counter) counter.textContent = `${state.current} / ${state.total}`;
 }
 
 // ── NAVIGATION ───────────────────────────────────────────────────
@@ -97,8 +69,6 @@ function goToSlide(target, direction) {
     initSlide(target);
   }, 600);
 
-  // Hide keyboard hint after first nav
-  kbHint.classList.add('hidden');
 }
 
 function advance() {
@@ -115,13 +85,23 @@ function retreat() {
 
 // ── EVENTS ───────────────────────────────────────────────────────
 function bindEvents() {
-  nextBtn.addEventListener('click', advance);
-  prevBtn.addEventListener('click', retreat);
+  // Click anywhere on the deck to advance (right half) or go back (left half)
+  deck.addEventListener('click', e => {
+    // Ignore clicks on interactive controls inside slides (buttons, canvases, etc.)
+    if (e.target.closest('button, canvas, a, input, select, textarea, .gallery-lightbox, #galleryLightbox')) return;
+    const half = window.innerWidth / 2;
+    e.clientX >= half ? advance() : retreat();
+  });
 
+  // Keyboard navigation
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); advance(); }
-    if (e.key === 'ArrowLeft') { e.preventDefault(); retreat(); }
-    if (e.key >= '1' && e.key <= '8') goToSlide(parseInt(e.key));
+    if (e.key === 'ArrowLeft')                   { e.preventDefault(); retreat(); }
+    if (e.key === 'Home')                        { e.preventDefault(); goToSlide(1); }
+    if (e.key === 'End')                         { e.preventDefault(); goToSlide(state.total); }
+    if (e.key >= '1' && e.key <= '9')            goToSlide(parseInt(e.key));
+    if (e.key === '0')                           goToSlide(10);
+    if (e.key === '-' || e.key === '=')         goToSlide(11);
   });
 
   // Touch swipe
@@ -137,7 +117,10 @@ function bindEvents() {
 function initSlide(n) {
   if (state.slideInitialized[n]) {
     // Re-run animations on re-entry
-    if (n === 4) runDashboardSequence();
+    if (n === 5) {
+      // Replay 3D sequence on re-visit
+      if (window.NeuroScene) window.NeuroScene.playNeuroNerfSequence();
+    }
     return;
   }
   state.slideInitialized[n] = true;
@@ -145,12 +128,23 @@ function initSlide(n) {
   switch(n) {
     case 1: initTitleCanvas(); break;
     case 2: initUrgencyCanvas(); initUrgencyReveals(); break;
-    case 3: initSystemCanvas(); initPipelineReveals(); break;
-    case 4: initDashboard(); break;
-    case 5: initTechCanvas(); initTechReveals(); break;
-    case 6: initWorkflowCanvas(); initWorkflowReveals(); break;
-    case 7: initClosingCanvas(); break;
-    case 8: initGalleryLightbox(); break;
+    case 3: initIssuesCanvas(); initIssuesReveals(); break;
+    case 4: initSystemCanvas(); initPipelineReveals(); break;
+    case 5: {
+      const canvas3d = document.getElementById('neuroNerf3D');
+      const hud3d    = document.getElementById('s3dHud');
+      if (canvas3d && window.NeuroScene) {
+        window.NeuroScene.initNeuroScene(canvas3d, hud3d);
+        window.NeuroScene.playNeuroNerfSequence();
+      }
+      break;
+    }
+    case 6: initTechCanvas(); initTechReveals(); break;
+    case 7: initRoadmapCanvas(); initRoadmapReveals(); break;
+    case 8: initBeyondCanvas(); initBeyondReveals(); break;
+    case 9: initWorkflowCanvas(); initWorkflowReveals(); break;
+    case 10: initClosingCanvas(); break;
+    case 11: initGalleryLightbox(); break;
   }
 }
 
@@ -308,24 +302,30 @@ function initUrgencyCanvas() {
   function draw() {
     canvas.width  = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
 
-    // Dark atmospheric gradient — top left
-    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, canvas.width * 0.8);
-    grd.addColorStop(0, 'rgba(255,59,59,0.04)');
-    grd.addColorStop(1, 'transparent');
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Warm radial glow — upper left corner
+    const g1 = ctx.createRadialGradient(W * 0.12, H * 0.18, 0, W * 0.12, H * 0.18, W * 0.55);
+    g1.addColorStop(0, 'rgba(255,107,53,0.06)');
+    g1.addColorStop(0.5, 'rgba(255,59,59,0.03)');
+    g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, W, H);
 
-    // Horizontal tension lines
-    ctx.strokeStyle = 'rgba(255,59,59,0.04)';
+    // Secondary cool glow — lower right
+    const g2 = ctx.createRadialGradient(W * 0.9, H * 0.85, 0, W * 0.9, H * 0.85, W * 0.4);
+    g2.addColorStop(0, 'rgba(0,208,220,0.03)');
+    g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle horizontal tension lines
+    ctx.strokeStyle = 'rgba(255,80,60,0.035)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i++) {
-      const y = (canvas.height / 8) * i + 40;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
+    for (let i = 1; i < 10; i++) {
+      const y = (H / 10) * i;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
   }
   draw();
@@ -334,22 +334,24 @@ function initUrgencyCanvas() {
 
 function initUrgencyReveals() {
   const statBlocks = document.querySelectorAll('#deck .slide--urgency .stat-block');
-  const urgMsg = document.querySelector('#deck .slide--urgency .urgency-message');
-  const delays = [0, 250, 500];
+  const problemBox = document.querySelector('#deck .slide--urgency .urgency-problem-box');
+  const photos     = document.querySelector('#deck .slide--urgency .urgency-photos');
+  const delays = [0, 220, 440];
 
   statBlocks.forEach((block, i) => {
     setTimeout(() => {
       block.classList.add('revealed');
-      // Animate the number
       const el = block.querySelector('.stat-number');
+      if (el.classList.contains('stat-number--static')) return;
       const target = parseFloat(el.dataset.target);
       const prefix = el.dataset.prefix || '';
       const suffix = el.dataset.suffix || '';
       animateNumber(el, 0, target, 1000, prefix, suffix);
-    }, 200 + delays[i]);
+    }, 150 + delays[i]);
   });
 
-  setTimeout(() => urgMsg.classList.add('revealed'), 1100);
+  if (problemBox) setTimeout(() => problemBox.classList.add('revealed'), 1050);
+  if (photos)     setTimeout(() => photos.classList.add('revealed'), 200);
 }
 
 function animateNumber(el, from, to, duration, prefix='', suffix='') {
@@ -515,22 +517,33 @@ function initMapCanvas(canvas) {
   ];
 
   const debris = [
-    { x: 155, y: 100, w: 40, h: 20, r: -15 },
-    { x: 290, y: 60,  w: 30, h: 15, r: 10 },
-    { x: 80,  y: 200, w: 35, h: 18, r: -5 },
-    { x: 250, y: 200, w: 50, h: 20, r: 8 },
-    { x: 400, y: 170, w: 30, h: 12, r: -12 },
+    { x: 150, y: 105, w: 38, h: 18, r: -15 },   // left scatter
+    { x: 290, y: 62,  w: 28, h: 14, r: 10  },   // top-right scatter
+    { x: 78,  y: 198, w: 34, h: 18, r: -5  },   // left-wall rubble
+    { x: 238, y: 195, w: 50, h: 22, r:  8  },   // inside danger zone ← primary hazard
+    { x: 245, y: 240, w: 42, h: 18, r: -10 },   // inside danger zone ← secondary hazard
+    { x: 400, y: 172, w: 28, h: 12, r: -12 },   // right scatter
   ];
 
-  // Initial safe route (waypoints)
+  // AI-planned route — cuts directly through the danger zone (structural collapse area)
   const routeWaypoints = [
-    [50, 270], [50, 160], [90, 100], [160, 80], [240, 80], [340, 80], [450, 80], [450, 200], [420, 260],
+    [55, 265],   // START — bottom left
+    [55, 130],   // up left corridor
+    [145, 88],   // angle toward top-centre
+    [248, 88],   // across top — approaching danger zone from above
+    [258, 168],  // heads DOWN into danger zone (x 230-300, y 148-290)
+    [258, 265],  // through hazard zone toward target
+    [430, 265],  // TARGET — bottom right
   ];
-  // Unsafe segment (through debris at 250,200)
-  const unsafeSegment = [[240, 80], [250, 180], [250, 260]];
-  // Safer re-planned route
+  // Replanned safe route — arcs right, completely bypassing the danger zone
   const replanWaypoints = [
-    [50, 270], [50, 160], [90, 100], [160, 80], [240, 80], [340, 80], [480, 60], [490, 180], [420, 260],
+    [55, 265],
+    [55, 130],
+    [145, 88],
+    [248, 88],
+    [345, 88],   // continue right, staying ABOVE and right of danger zone
+    [430, 130],  // curve down clear of zone
+    [430, 265],  // TARGET
   ];
 
   let routeProgress  = 0;   // 0..1
@@ -602,17 +615,25 @@ function initMapCanvas(canvas) {
       drawRoute(ctx, replanWaypoints, replanProgress, 'rgba(34,196,123,0.85)', 2.5, false);
     }
 
-    // Danger zone overlay
+    // Danger zone overlay — centred over the route at x≈258, y 148-290
     if (showDanger) {
       dangerPulse += 0.08;
       const alpha = 0.08 + Math.sin(dangerPulse) * 0.04;
       ctx.fillStyle = `rgba(255,59,59,${alpha})`;
-      ctx.fillRect(220, 150, 80, 130);
-      ctx.strokeStyle = `rgba(255,59,59,${0.3 + Math.sin(dangerPulse) * 0.15})`;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.strokeRect(220, 150, 80, 130);
+      ctx.fillRect(228, 148, 70, 142);
+      ctx.strokeStyle = `rgba(255,59,59,${0.35 + Math.sin(dangerPulse) * 0.15})`;
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeRect(228, 148, 70, 142);
       ctx.setLineDash([]);
+
+      // Hazard label inside box
+      ctx.fillStyle = `rgba(255,59,59,${0.55 + Math.sin(dangerPulse) * 0.2})`;
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('STRUCTURAL', 263, 164);
+      ctx.fillText('HAZARD', 263, 174);
+      ctx.textAlign = 'left';
     }
 
     // Drone dot
@@ -701,10 +722,11 @@ function initMapCanvas(canvas) {
     resetDronePo: () => { dronePos = { x: 50, y: 270 }; },
   };
 
-  // Animate route progress continuously
+  // Animate route progress continuously — speed 0.004 so at 2.5 s the drone
+  // reaches progress ≈ 0.60, placing it right at the hazard-zone entrance.
   (function animLoop() {
-    if (routeProgress < 1 && !showDanger)   routeProgress = Math.min(routeProgress + 0.003, 1);
-    if (showReplan && replanProgress < 1)   replanProgress = Math.min(replanProgress + 0.003, 1);
+    if (routeProgress < 1 && !showDanger)  routeProgress = Math.min(routeProgress + 0.004, 1);
+    if (showReplan && replanProgress < 1)  replanProgress = Math.min(replanProgress + 0.004, 1);
     requestAnimationFrame(animLoop);
   })();
 }
@@ -745,7 +767,7 @@ function runDashboardSequence() {
   const cmdValue = document.getElementById('cmdValue');
   if (cmdValue) cmdValue.textContent = 'ADVANCE';
 
-  setNarrative('The responder issues high-level intent — AI plots a safe route through the debris.');
+  setNarrative('The responder sets intent. AI plots a safe route through the debris.');
 
   // Step sequence timeline
   // Step 1 (1s): Route computed
@@ -762,21 +784,22 @@ function runDashboardSequence() {
     if (chipDanger) chipDanger.style.display = 'block';
     if (sysSafety) { sysSafety.textContent = 'HAZARD'; sysSafety.style.color = '#FF3B3B'; }
     if (cmdValue) cmdValue.textContent = 'HOLD';
-    setNarrative('Structural instability detected on planned path — human perceives the hazard.');
+    setNarrative('Structural instability detected. The human perceives the hazard.');
   }, 2500);
 
-  // Step 3 (4s): ErrP veto
+  // Step 3 (4s): ErrP veto — drone is already frozen at hazard-zone entrance
+  // (showDanger stopped the advance at ~0.60 progress); no rewind needed.
   setTimeout(() => {
     showLog('log3');
     if (window._mapState) {
       window._mapState.setShowVeto(true);
-      window._mapState.setRouteProgress(0.45); // pause route mid-point
+      // Keep drone exactly where it is — right at the danger zone edge
     }
     const chipVeto = document.getElementById('chipVeto');
     if (chipVeto) chipVeto.style.display = 'block';
     if (cmdValue) cmdValue.textContent = 'VETO';
     if (eegDot) { eegDot.style.background = '#FF3B3B'; eegDot.style.boxShadow = '0 0 6px #FF3B3B'; }
-    setNarrative("ErrP brain signal detected \u2014 the human\u2019s subconscious error response vetoes the path.");
+    setNarrative("ErrP detected. The brain's error response vetoes the path.");
   }, 4000);
 
   // Step 4 (5.5s): Replanning
@@ -796,7 +819,7 @@ function runDashboardSequence() {
     if (sysSafety) { sysSafety.textContent = 'SAFE'; sysSafety.style.color = '#22C47B'; }
     if (cmdValue) cmdValue.textContent = 'ADVANCE';
     if (eegDot) { eegDot.style.background = '#22C47B'; eegDot.style.boxShadow = '0 0 6px #22C47B'; }
-    setNarrative('Replanning complete. AI finds a safer alternate route — drone continues the mission.');
+    setNarrative('Replanning complete. AI finds a safer route and the drone continues.');
   }, 5500);
 }
 
@@ -858,7 +881,259 @@ function initTechReveals() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// SLIDE 6 — PERSONAL WORKFLOW
+// SLIDE 6 — ROADMAP CANVAS + REVEALS
+// ══════════════════════════════════════════════════════════════════
+function initRoadmapCanvas() {
+  const canvas = document.getElementById('roadmapCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  function draw() {
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const grd = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    grd.addColorStop(0, 'rgba(0,208,220,0.03)');
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dotted vertical line (left margin)
+    ctx.strokeStyle = 'rgba(0,208,220,0.15)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 8]);
+    ctx.beginPath();
+    ctx.moveTo(60, 40);
+    ctx.lineTo(60, canvas.height - 40);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  draw();
+  window.addEventListener('resize', draw);
+}
+
+function initRoadmapReveals() {
+  const slide  = document.querySelector('#deck .slide--roadmap');
+  if (!slide) return;
+  const cards  = slide.querySelectorAll('.rp-card');
+  const arrows = slide.querySelectorAll('.rp-arrow');
+
+  const seq = [
+    { el: cards[0],  delay: 100 },
+    { el: arrows[0], delay: 300 },
+    { el: cards[1],  delay: 420 },
+    { el: arrows[1], delay: 620 },
+    { el: cards[2],  delay: 740 },
+  ];
+  seq.forEach(({ el, delay }) => {
+    if (el) setTimeout(() => el.classList.add('revealed'), delay);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SLIDE 3 — CURRENT DRONE SYSTEM ISSUES
+// ══════════════════════════════════════════════════════════════════
+function initIssuesCanvas() {
+  const canvas = document.getElementById('issuesCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+  resize();
+  new ResizeObserver(resize).observe(canvas);
+
+  const dots = Array.from({ length: 28 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    vx: (Math.random() - 0.5) * 0.0001,
+    vy: (Math.random() - 0.5) * 0.0001,
+    r: Math.random() * 1 + 0.3,
+    o: Math.random() * 0.2 + 0.04,
+  }));
+
+  function draw() {
+    const W = canvas.width, H = canvas.height;
+    ctx.fillStyle = 'rgba(8,10,14,0.97)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = 'rgba(0,208,220,0.035)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 12; i++) {
+      const x = (W * i) / 12;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.stroke();
+    }
+    for (let i = 0; i <= 8; i++) {
+      const y = (H * i) / 8;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+
+    dots.forEach(d => {
+      d.x += d.vx; d.y += d.vy;
+      if (d.x < 0) d.x = 1; if (d.x > 1) d.x = 0;
+      if (d.y < 0) d.y = 1; if (d.y > 1) d.y = 0;
+      ctx.globalAlpha = d.o;
+      ctx.fillStyle = '#00D0DC';
+      ctx.beginPath();
+      ctx.arc(d.x * W, d.y * H, d.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+function initIssuesReveals() {
+  const slide = document.querySelector('#deck .slide--issues');
+  if (!slide) return;
+  slide.querySelectorAll('[data-issue-reveal]').forEach(el => {
+    const i = parseInt(el.getAttribute('data-issue-reveal'), 10);
+    setTimeout(() => el.classList.add('revealed'), 50 + i * 95);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SLIDE 8 — FEASIBILITY & SCALABILITY
+// ══════════════════════════════════════════════════════════════════
+function initBeyondCanvas() {
+  const canvas = document.getElementById('beyondCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  let raf;
+
+  function resize() {
+    canvas.width  = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+  resize();
+  new ResizeObserver(resize).observe(canvas);
+
+  // Floating grid nodes
+  const nodes = Array.from({ length: 55 }, () => ({
+    x: Math.random(),
+    y: Math.random(),
+    vx: (Math.random() - 0.5) * 0.00018,
+    vy: (Math.random() - 0.5) * 0.00018,
+    r: Math.random() * 1.5 + 0.5,
+    opacity: Math.random() * 0.4 + 0.1,
+  }));
+
+  function draw() {
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Deep background gradient
+    const bg = ctx.createRadialGradient(W * 0.5, H * 0.5, 0, W * 0.5, H * 0.5, W * 0.75);
+    bg.addColorStop(0, 'rgba(18,24,38,0.96)');
+    bg.addColorStop(1, 'rgba(8,10,18,1)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // Perspective grid — horizontal lines converging to center-top vanishing point
+    const vx = W * 0.5, vy = H * 0.18;
+    ctx.strokeStyle = 'rgba(0,208,220,0.045)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) {
+      const bx = (W * i) / 10;
+      ctx.beginPath();
+      ctx.moveTo(vx, vy);
+      ctx.lineTo(bx, H);
+      ctx.stroke();
+    }
+    // Horizontal cross-lines (perspective rows)
+    for (let i = 0; i <= 8; i++) {
+      const t   = i / 8;
+      const yy  = vy + (H - vy) * Math.pow(t, 1.8);
+      const xSpan = (W * 0.5) * t;
+      ctx.globalAlpha = t * 0.12;
+      ctx.beginPath();
+      ctx.moveTo(vx - xSpan, yy);
+      ctx.lineTo(vx + xSpan, yy);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Warm radial glow upper-right
+    const glow = ctx.createRadialGradient(W * 0.82, H * 0.12, 0, W * 0.82, H * 0.12, W * 0.45);
+    glow.addColorStop(0, 'rgba(255,107,26,0.07)');
+    glow.addColorStop(1, 'rgba(255,107,26,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // Cyan glow lower-left
+    const glow2 = ctx.createRadialGradient(W * 0.12, H * 0.88, 0, W * 0.12, H * 0.88, W * 0.4);
+    glow2.addColorStop(0, 'rgba(0,208,220,0.06)');
+    glow2.addColorStop(1, 'rgba(0,208,220,0)');
+    ctx.fillStyle = glow2;
+    ctx.fillRect(0, 0, W, H);
+
+    // Update + draw nodes
+    nodes.forEach(n => {
+      n.x += n.vx; n.y += n.vy;
+      if (n.x < 0) n.x = 1; if (n.x > 1) n.x = 0;
+      if (n.y < 0) n.y = 1; if (n.y > 1) n.y = 0;
+
+      ctx.globalAlpha = n.opacity;
+      ctx.fillStyle = '#00D0DC';
+      ctx.beginPath();
+      ctx.arc(n.x * W, n.y * H, n.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // Thin connecting lines between close nodes
+    ctx.strokeStyle = 'rgba(0,208,220,0.09)';
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = (nodes[i].x - nodes[j].x) * W;
+        const dy = (nodes[i].y - nodes[j].y) * H;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d < 90) {
+          ctx.globalAlpha = (1 - d / 90) * 0.12;
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x * W, nodes[i].y * H);
+          ctx.lineTo(nodes[j].x * W, nodes[j].y * H);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    raf = requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+function initBeyondReveals() {
+  const slide = document.querySelector('[data-slide="8"].slide--beyond');
+  if (!slide) return;
+
+  const header  = slide.querySelector('[data-reveal="0"]');
+  const unified = slide.querySelector('[data-reveal="1"]');
+
+  const seq = [
+    { el: header,  delay: 80  },
+    { el: unified, delay: 400 },
+  ];
+
+  seq.forEach(({ el, delay }) => {
+    if (el) setTimeout(() => el.classList.add('revealed'), delay);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SLIDE 10 — PERSONAL WORKFLOW
 // ══════════════════════════════════════════════════════════════════
 function initWorkflowCanvas() {
   const canvas = document.getElementById('workflowCanvas');
@@ -870,8 +1145,9 @@ function initWorkflowCanvas() {
     canvas.height = canvas.offsetHeight;
   }
   resize();
-  window.addEventListener('resize', resize);
+  new ResizeObserver(resize).observe(canvas);
 
+  let raf;
   function draw() {
     const W = canvas.width;
     const H = canvas.height;
@@ -905,21 +1181,22 @@ function initWorkflowCanvas() {
       ctx.stroke();
     }
 
-    requestAnimationFrame(draw);
+    raf = requestAnimationFrame(draw);
   }
   draw();
 }
 
 function initWorkflowReveals() {
-  const slide = document.querySelector('#deck [data-slide="6"].slide--workflow');
+  const slide = document.querySelector('#deck [data-slide="9"].slide--workflow');
   if (!slide) return;
-  slide.querySelectorAll('[data-wf-reveal]').forEach((el, i) => {
+  const items = slide.querySelectorAll('[data-wf-reveal]');
+  items.forEach((el, i) => {
     setTimeout(() => el.classList.add('revealed'), 90 + i * 110);
   });
 }
 
 // ══════════════════════════════════════════════════════════════════
-// SLIDE 9 — CLOSING CANVAS
+// SLIDE 11 — CLOSING CANVAS
 // ══════════════════════════════════════════════════════════════════
 function initClosingCanvas() {
   const canvas = document.getElementById('closingCanvas');
@@ -971,10 +1248,6 @@ function startBackgroundAnimations() {
       c.style.transform = `translate(${mx}px, ${my}px)`;
     });
   });
-
-  // Auto-replay dashboard when returning to slide 4
-  // (handled in goToSlide via initSlide which calls runDashboardSequence
-  //  only when not already initialized, so we listen for re-entry)
 }
 
 // ── KICK OFF ──────────────────────────────────────────────────────

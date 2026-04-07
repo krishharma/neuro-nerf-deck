@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,300..700&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=18" />
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 </head>
 <body>
@@ -144,7 +144,6 @@
 
     <div class="slide-content system-content">
       <h2 class="section-title">How <span class="highlight-cyan">Neuro‑NeRF</span> Works</h2>
-      <p class="system-subtitle">Three integrated stages. One unified system.</p>
 
       <div class="pipeline">
         <!-- Stage 1 -->
@@ -230,80 +229,15 @@
   </section>
 
   <!-- ═══════════════════════════════════════════
-       SLIDE 4 — 3D EXPLAINER
+       SLIDE 4 — INTERACTIVE MISSION DASHBOARD
   ═══════════════════════════════════════════ -->
-  <section class="slide slide--3d" data-slide="4">
-    <div class="hud-corner hud-tl"></div>
-    <div class="hud-corner hud-tr"></div>
-    <div class="hud-corner hud-bl"></div>
-    <div class="hud-corner hud-br"></div>
-    <div class="slide-label">04 / SYSTEM IN 3D</div>
-
-    <div class="slide-3d-layout">
-      <!-- LEFT: title + bullet points -->
-      <div class="s3d-left">
-        <h2 class="s3d-title">NeRF + BCI,<br><span class="highlight-cyan">Live</span></h2>
-        <ul class="s3d-bullets">
-          <li data-beat="1">
-            <span class="bullet-num">01</span>
-            <span>Drone captures <strong>2D images</strong> as it patrols the disaster zone</span>
-          </li>
-          <li data-beat="2">
-            <span class="bullet-num">02</span>
-            <span>NeRF-style model assembles a live <strong>3D digital twin</strong> from those images</span>
-          </li>
-          <li data-beat="3">
-            <span class="bullet-num">03</span>
-            <span>Autonomy layer plans a <strong>safe route</strong> through mapped corridors</span>
-          </li>
-          <li data-beat="4">
-            <span class="bullet-num">04</span>
-            <span>BCI detects motor imagery — sends <strong>target command</strong> to the drone</span>
-          </li>
-        </ul>
-        <button class="s3d-play-btn" id="s3dPlayBtn" onclick="window.NeuroScene.playNeuroNerfSequence()">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2l11 6-11 6V2z"/></svg>
-          Play Sequence
-        </button>
-      </div>
-
-      <!-- RIGHT: 3D canvas + HUD overlays -->
-      <div class="s3d-right" id="s3dRight">
-        <!-- Three.js canvas -->
-        <canvas id="neuroNerf3D" class="s3d-canvas"></canvas>
-
-        <!-- HUD overlays -->
-        <div class="s3d-hud" id="s3dHud">
-          <!-- EEG status strip -->
-          <div class="nn-panel nn-panel--eeg">
-            <div class="nn-panel-label">BCI / EEG STREAM</div>
-            <canvas id="nn-wave" class="nn-wave-canvas"></canvas>
-            <div class="nn-cmd-row">
-              <div class="nn-eeg-dot" id="nn-eeg-status"></div>
-              <div class="nn-cmd-label">STATUS</div>
-              <div class="nn-cmd-value" id="nn-cmd-value">STANDBY</div>
-            </div>
-          </div>
-          <!-- Status strip -->
-          <div class="nn-panel nn-panel--alert">
-            <div class="nn-panel-label">SYSTEM STATUS</div>
-            <div class="nn-alert-value" id="nn-alert">—</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══════════════════════════════════════════
-       SLIDE 5 — INTERACTIVE MISSION DASHBOARD
-  ═══════════════════════════════════════════ -->
-  <section class="slide slide--dashboard" data-slide="5">
+  <section class="slide slide--dashboard" data-slide="4">
     <div class="hud-corner hud-tl"></div>
     <div class="hud-corner hud-tr"></div>
     <div class="hud-corner hud-bl"></div>
     <div class="hud-corner hud-br"></div>
 
-    <div class="slide-label">04 / SHARED AUTONOMY IN ACTION</div>
+    <div class="slide-label">03 / SHARED AUTONOMY IN ACTION</div>
 
     <div class="dashboard-header">
       <div class="dash-title">NEURO-NERF MISSION INTERFACE</div>
@@ -405,19 +339,19 @@
   <!-- ═══════════════════════════════════════════
        SLIDE 6 — TECHNICAL SOUNDNESS
   ═══════════════════════════════════════════ -->
-  <section class="slide slide--tech" data-slide="6">
+  <section class="slide slide--tech" data-slide="5">
     <canvas class="bg-canvas" id="techCanvas"></canvas>
     <div class="hud-corner hud-tl"></div>
     <div class="hud-corner hud-tr"></div>
     <div class="hud-corner hud-bl"></div>
     <div class="hud-corner hud-br"></div>
 
-    <div class="slide-label">05 / TECHNICAL APPROACH</div>
+    <div class="slide-label">04 / TECHNICAL SOUNDNESS</div>
 
     <div class="slide-content tech-content">
-      <h2 class="section-title">Why This AI Approach Is <span class="highlight-cyan">Sound</span></h2>
+      <h2 class="section-title">Technical <span class="highlight-cyan">Soundness</span> of AI Approach</h2>
 
-      <div class="tech-grid">
+      <div class="tech-grid tech-grid--three">
         <div class="tech-card" data-reveal="0">
           <div class="tech-card-header">
             <div class="tech-icon">
@@ -432,17 +366,6 @@
         <div class="tech-card" data-reveal="1">
           <div class="tech-card-header">
             <div class="tech-icon">
-              <svg viewBox="0 0 32 32" fill="none"><circle cx="6" cy="26" r="2.5" stroke="currentColor" stroke-width="1.5"/><circle cx="26" cy="6" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M6 26 L6 14 L18 14 L18 6 L26 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><rect x="11" y="18" width="6" height="6" rx="1" stroke="rgba(255,100,80,0.8)" stroke-width="1.5"/></svg>
-            </div>
-            <div class="tech-method">Visual-Inertial Localization</div>
-          </div>
-          <div class="tech-justify">GPS fails indoors and in rubble. Camera + IMU fusion maintains accurate position.</div>
-          <div class="tech-tag">GPS-DENIED READY</div>
-        </div>
-
-        <div class="tech-card" data-reveal="2">
-          <div class="tech-card-header">
-            <div class="tech-icon">
               <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="10" r="4" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="24" r="3" stroke="currentColor" stroke-width="1.5"/><circle cx="26" cy="24" r="3" stroke="currentColor" stroke-width="1.5"/><path d="M16 14 L6 21" stroke="currentColor" stroke-width="1.5" opacity="0.6"/><path d="M16 14 L26 21" stroke="currentColor" stroke-width="1.5" opacity="0.6"/></svg>
             </div>
             <div class="tech-method">Shared Autonomy</div>
@@ -451,7 +374,7 @@
           <div class="tech-tag">OPTIMAL HUMAN-AI SPLIT</div>
         </div>
 
-        <div class="tech-card" data-reveal="3">
+        <div class="tech-card" data-reveal="2">
           <div class="tech-card-header">
             <div class="tech-icon">
               <svg viewBox="0 0 32 32" fill="none"><path d="M2 16 Q5 16 6 11 Q7 6 8 16 Q9 26 10 16 Q11 6 12 12 Q13 18 14 16 Q15 14 16 16 Q17 18 18 11 Q19 4 20 16 Q21 28 22 16 Q23 4 24 12 L30 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -462,90 +385,94 @@
           <div class="tech-tag">REALISTIC & FEASIBLE</div>
         </div>
       </div>
-
-      <div class="tech-principle" data-reveal="4">
-        <div class="tech-principle-line"></div>
-        <p>The human remains in charge of <strong>intent</strong> and <strong>safety</strong> — AI handles <strong>complexity</strong> and motion planning.</p>
-        <div class="tech-principle-line"></div>
-      </div>
     </div>
   </section>
 
   <!-- ═══════════════════════════════════════════
-       SLIDE 6 — VALIDATION ROADMAP
+       SLIDE 6 — PERSONAL WORKFLOW
   ═══════════════════════════════════════════ -->
-  <section class="slide slide--roadmap" data-slide="7">
-    <canvas class="bg-canvas" id="roadmapCanvas"></canvas>
+  <section class="slide slide--workflow" data-slide="6">
+    <canvas class="bg-canvas" id="workflowCanvas"></canvas>
     <div class="hud-corner hud-tl"></div>
     <div class="hud-corner hud-tr"></div>
     <div class="hud-corner hud-bl"></div>
     <div class="hud-corner hud-br"></div>
+    <div class="slide-label">05 / MY PERSONAL WORKFLOW</div>
 
-    <div class="slide-label">06 / VALIDATION</div>
+    <div class="workflow-wrap">
+      <header class="workflow-header wf-reveal" data-wf-reveal>
+        <h2 class="workflow-title">My Personal Workflow</h2>
+        <p class="workflow-subtitle">How I used AI responsibly to research, refine, and communicate this project</p>
+      </header>
 
-    <div class="slide-content roadmap-content">
-      <h2 class="section-title">Testing &amp; Validation Plan</h2>
-      <p class="roadmap-subtitle">A phased, simulation-first approach — grounded in feasibility.</p>
-
-      <div class="roadmap-track">
-        <!-- Phase 1 -->
-        <div class="phase-block" data-reveal="0">
-          <div class="phase-connector-line left-line"></div>
-          <div class="phase-node">
-            <div class="phase-num">01</div>
-          </div>
-          <div class="phase-connector-line right-line"></div>
-          <div class="phase-card">
-            <div class="phase-label">Phase One</div>
-            <div class="phase-title">Digital Twin Simulation</div>
-            <div class="phase-desc">Validate NeRF-inspired occupancy grid generation, obstacle avoidance, and safe route planning in cluttered virtual disaster environments.</div>
-            <div class="phase-metrics">
-              <span class="metric-chip">Mapping Accuracy</span>
-              <span class="metric-chip">Safe Navigation</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Phase 2 -->
-        <div class="phase-block" data-reveal="1">
-          <div class="phase-connector-line left-line"></div>
-          <div class="phase-node active">
-            <div class="phase-num">02</div>
-          </div>
-          <div class="phase-connector-line right-line"></div>
-          <div class="phase-card">
-            <div class="phase-label">Phase Two</div>
-            <div class="phase-title">EEG Signal Validation</div>
-            <div class="phase-desc">Validate high-level command decoding (motor imagery) and ErrP veto detection with a small set of commands and consumer-grade EEG hardware.</div>
-            <div class="phase-metrics">
-              <span class="metric-chip">Command Decoding</span>
-              <span class="metric-chip">Veto Response</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Phase 3 -->
-        <div class="phase-block" data-reveal="2">
-          <div class="phase-connector-line left-line"></div>
-          <div class="phase-node">
-            <div class="phase-num">03</div>
-          </div>
-          <div class="phase-connector-line right-line"></div>
-          <div class="phase-card">
-            <div class="phase-label">Phase Three</div>
-            <div class="phase-title">Integrated Shared Autonomy</div>
-            <div class="phase-desc">End-to-end system testing: measure path safety scores, successful replanning rate, and reduction in cognitive workload for the operator.</div>
-            <div class="phase-metrics">
-              <span class="metric-chip">Path Safety Score</span>
-              <span class="metric-chip">Operator Workload ↓</span>
-            </div>
-          </div>
+      <div class="workflow-motif wf-reveal" data-wf-reveal aria-hidden="true">
+        <svg class="workflow-motif-svg" viewBox="0 0 320 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="wfMotifGrad" x1="0" y1="0" x2="320" y2="0">
+              <stop offset="0%" stop-color="rgba(255,255,255,0.35)"/>
+              <stop offset="45%" stop-color="rgba(0,208,220,0.45)"/>
+              <stop offset="100%" stop-color="rgba(0,208,220,0.2)"/>
+            </linearGradient>
+          </defs>
+          <circle cx="56" cy="24" r="10" stroke="rgba(255,255,255,0.25)" stroke-width="1.2" fill="rgba(0,0,0,0.25)"/>
+          <path d="M56 14 v-6 M48 18 l16-8 M48 28 l16 8" stroke="rgba(255,255,255,0.45)" stroke-width="1.2" stroke-linecap="round"/>
+          <path d="M70 24 H264" stroke="url(#wfMotifGrad)" stroke-width="1" stroke-dasharray="4 4"/>
+          <circle cx="276" cy="24" r="10" stroke="rgba(0,208,220,0.4)" stroke-width="1.2" fill="rgba(0,208,220,0.06)"/>
+          <path d="M272 28 l4-8 4 8" stroke="#00d0dc" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <div class="workflow-motif-labels">
+          <span>Human judgment</span>
+          <span>AI assistance</span>
         </div>
       </div>
 
-      <div class="feasibility-note" data-reveal="3">
-        <div class="fn-icon">⬡</div>
-        <p>Track 1 design: simulation over field trials · simple occupancy grids over heavy training runs · consumer EEG over clinical hardware.</p>
+      <div class="workflow-pipeline">
+        <article class="workflow-card wf-reveal" data-wf-reveal>
+          <div class="workflow-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="11" stroke="currentColor" stroke-width="1.3"/><circle cx="16" cy="16" r="2.5" fill="currentColor"/><path d="M16 4v3M16 25v3M4 16h3M25 16h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          </div>
+          <h3 class="workflow-card-title">Framed the problem</h3>
+          <p class="workflow-card-body">I identified the real challenge in disaster response: responders need faster, safer situational awareness in dangerous indoor environments.</p>
+        </article>
+
+        <div class="workflow-connector wf-reveal" data-wf-reveal aria-hidden="true">
+          <span class="workflow-connector-line"></span>
+          <span class="workflow-connector-glow"></span>
+        </div>
+
+        <article class="workflow-card wf-reveal" data-wf-reveal>
+          <div class="workflow-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none"><circle cx="14" cy="14" r="8" stroke="currentColor" stroke-width="1.3"/><path d="M20 20l7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M10 14h6M10 11h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" opacity="0.6"/></svg>
+          </div>
+          <h3 class="workflow-card-title">Researched with <span class="wf-accent">AI assistance</span></h3>
+          <p class="workflow-card-body">I used AI to accelerate background research, compare technical approaches, and organize complex ideas, while verifying what was relevant to my concept.</p>
+        </article>
+
+        <div class="workflow-connector wf-reveal" data-wf-reveal aria-hidden="true">
+          <span class="workflow-connector-line"></span>
+          <span class="workflow-connector-glow"></span>
+        </div>
+
+        <article class="workflow-card wf-reveal" data-wf-reveal>
+          <div class="workflow-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none"><rect x="5" y="6" width="22" height="20" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 12h22M11 6v20M17 12v14" stroke="currentColor" stroke-width="1.1" opacity="0.65"/></svg>
+          </div>
+          <h3 class="workflow-card-title wf-title-em"><span class="wf-accent">Designed the system</span> myself</h3>
+          <p class="workflow-card-body">I made the final architectural decisions by breaking the solution into mapping, navigation, shared autonomy, and brain-guided input modules.</p>
+        </article>
+
+        <div class="workflow-connector wf-reveal" data-wf-reveal aria-hidden="true">
+          <span class="workflow-connector-line"></span>
+          <span class="workflow-connector-glow"></span>
+        </div>
+
+        <article class="workflow-card wf-reveal" data-wf-reveal>
+          <div class="workflow-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none"><path d="M16 4l12 8v12l-12 8-12-8V12l12-8z" stroke="currentColor" stroke-width="1.3"/><path d="M11 16l4 4 7-8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h3 class="workflow-card-title">Refined ethically and critically</h3>
+          <p class="workflow-card-body">I used AI to improve clarity, iteration, and presentation, but I did not treat AI output as truth; I filtered, adapted, and judged every part of the final work myself.</p>
+        </article>
       </div>
     </div>
   </section>
@@ -553,7 +480,7 @@
   <!-- ═══════════════════════════════════════════
        SLIDE 7 — CLOSING
   ═══════════════════════════════════════════ -->
-  <section class="slide slide--closing" data-slide="8">
+  <section class="slide slide--closing" data-slide="7">
     <canvas class="bg-canvas" id="closingCanvas"></canvas>
     <div class="hud-corner hud-tl"></div>
     <div class="hud-corner hud-tr"></div>
@@ -617,7 +544,64 @@
     </div>
   </section>
 
+  <!-- ═══════════════════════════════════════════
+       SLIDE 8 — Q&A
+  ═══════════════════════════════════════════ -->
+  <section class="slide slide--gallery" data-slide="8">
+    <div class="hud-corner hud-tl"></div>
+    <div class="hud-corner hud-tr"></div>
+    <div class="hud-corner hud-bl"></div>
+    <div class="hud-corner hud-br"></div>
+    <div class="slide-label">06 / Q&amp;A</div>
+
+    <div class="gallery-wrap">
+      <header class="gallery-header">
+        <h2 class="gallery-title">Q&amp;A</h2>
+      </header>
+      <h3 class="gallery-heading">Visuals</h3>
+      <div class="gallery-grid" role="list">
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: BCI, drone, and 3D map pipeline">
+          <img src="assets/gallery/gallery-01.png" alt="Line diagram: brain-computer interface, rescue quadcopter, and 3D floor-plan map connected by arrows." loading="lazy" width="640" height="400" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: NeRF 3D reconstruction diagram">
+          <img src="assets/gallery/gallery-02.png" alt="Diagram: multiple 2D photographs of a damaged building converging through a NeRF process into a voxel 3D scene." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: multiple feeds versus single 3D view">
+          <img src="assets/gallery/gallery-03.png" alt="Comparison: grid of raw 2D disaster video feeds beside a single 3D city map with a highlighted safe path." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: BCI commands to drone">
+          <img src="assets/gallery/gallery-04.png" alt="Illustration: responder with BCI headset sending Move, Hold, and Scan intent to a scanning drone over a grid." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: human approval and planner flowchart">
+          <img src="assets/gallery/gallery-05.png" alt="Flowchart: EEG BCI and game controller inputs through human approval and veto into planner with safety rules, output to drone." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: occupancy grid path planning">
+          <img src="assets/gallery/gallery-06.png" alt="Grid map with green safe cells, red blocked cells, gray unknown cells, drone icon, and legend." loading="lazy" width="900" height="900" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: research foundations pillars">
+          <img src="assets/gallery/gallery-07.png" alt="Three pillars: NeRF-style 3D mapping, grid-based path planning, and EEG BCI intent decoding, each noted as demonstrated in research." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: validation and testing cycle">
+          <img src="assets/gallery/gallery-08.png" alt="Three-stage diagram: simulation, training-ground tethered tests, and supervised drills with logging." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: operator UX before and after">
+          <img src="assets/gallery/gallery-09.png" alt="Cartoon comparison: stressed operator viewing many 2D feeds versus calm operator with one 3D map and high-level commands." loading="lazy" width="1280" height="720" />
+        </button>
+        <button type="button" class="gallery-tile" role="listitem" aria-label="Enlarge: Neuro-NeRF system overview">
+          <img src="assets/gallery/gallery-10.png" alt="System overview: BCI intent, drone collecting views in a damaged structure, 2D map with safe path and survivor marker, and feedback loop labels." loading="lazy" width="1280" height="720" />
+        </button>
+      </div>
+    </div>
+  </section>
+
 </div><!-- end .deck -->
+
+<div class="gallery-lightbox" id="galleryLightbox" aria-hidden="true" hidden role="dialog" aria-modal="true" aria-label="Image preview">
+  <div class="gallery-lightbox-frame">
+    <button type="button" class="gallery-lightbox-close" id="galleryLightboxClose" aria-label="Close image">×</button>
+    <img class="gallery-lightbox-img" id="galleryLightboxImg" alt="" />
+  </div>
+</div>
 
 <!-- ── NAVIGATION ─────────────────────────────────────────────── -->
 <nav class="nav-controls">
@@ -636,8 +620,7 @@
 <!-- Keyboard hint -->
 <div class="keyboard-hint" id="kbHint">Press <kbd>→</kbd> or <kbd>Space</kbd> to advance</div>
 
-<script src="deck.js?v=4"></script>
-<script src="scene3d.js?v=4"></script>
+<script src="deck.js?v=17"></script>
 <script data-pplx-inline-edit>
 (function(){
   if(window===window.top)return;

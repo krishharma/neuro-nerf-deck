@@ -137,11 +137,7 @@ function bindEvents() {
 function initSlide(n) {
   if (state.slideInitialized[n]) {
     // Re-run animations on re-entry
-    if (n === 4) {
-      // Replay 3D sequence on re-visit
-      if (window.NeuroScene) window.NeuroScene.playNeuroNerfSequence();
-    }
-    if (n === 5) runDashboardSequence();
+    if (n === 4) runDashboardSequence();
     return;
   }
   state.slideInitialized[n] = true;
@@ -150,20 +146,74 @@ function initSlide(n) {
     case 1: initTitleCanvas(); break;
     case 2: initUrgencyCanvas(); initUrgencyReveals(); break;
     case 3: initSystemCanvas(); initPipelineReveals(); break;
-    case 4: {
-      const canvas3d = document.getElementById('neuroNerf3D');
-      const hud3d    = document.getElementById('s3dHud');
-      if (canvas3d && window.NeuroScene) {
-        window.NeuroScene.initNeuroScene(canvas3d, hud3d);
-        window.NeuroScene.playNeuroNerfSequence();
-      }
-      break;
-    }
-    case 5: initDashboard(); break;
-    case 6: initTechCanvas(); initTechReveals(); break;
-    case 7: initRoadmapCanvas(); initRoadmapReveals(); break;
-    case 8: initClosingCanvas(); break;
+    case 4: initDashboard(); break;
+    case 5: initTechCanvas(); initTechReveals(); break;
+    case 6: initWorkflowCanvas(); initWorkflowReveals(); break;
+    case 7: initClosingCanvas(); break;
+    case 8: initGalleryLightbox(); break;
   }
+}
+
+let galleryLightboxBound = false;
+function initGalleryLightbox() {
+  if (galleryLightboxBound) return;
+  const lightbox = document.getElementById('galleryLightbox');
+  const lbImg = document.getElementById('galleryLightboxImg');
+  const closeBtn = document.getElementById('galleryLightboxClose');
+  const tiles = document.querySelectorAll('.slide--gallery .gallery-tile');
+  if (!lightbox || !lbImg || !closeBtn || !tiles.length) return;
+  galleryLightboxBound = true;
+
+  function showFromTile(tile) {
+    const img = tile.querySelector('img');
+    if (!img) return;
+    lbImg.src = img.currentSrc || img.src;
+    lbImg.alt = img.alt || '';
+    lightbox.hidden = false;
+    lightbox.removeAttribute('hidden');
+    lightbox.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+      lightbox.classList.add('is-open');
+      closeBtn.focus({ preventScroll: true });
+    });
+  }
+
+  function hideNow() {
+    if (!lightbox.classList.contains('is-open')) return;
+    lightbox.classList.remove('is-open');
+    lightbox.setAttribute('aria-hidden', 'true');
+    lightbox.hidden = true;
+    lbImg.removeAttribute('src');
+    lbImg.alt = '';
+  }
+
+  function onGalleryKeydown(e) {
+    if (!lightbox.classList.contains('is-open')) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      hideNow();
+      return;
+    }
+    if (e.key === ' ' || e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+
+  tiles.forEach(tile => {
+    tile.addEventListener('click', e => {
+      e.stopPropagation();
+      showFromTile(tile);
+    });
+  });
+
+  closeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    hideNow();
+  });
+
+  document.addEventListener('keydown', onGalleryKeydown, true);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -800,63 +850,76 @@ function initTechCanvas() {
 }
 
 function initTechReveals() {
-  const cards    = document.querySelectorAll('#deck .slide--tech .tech-card');
-  const principle = document.querySelector('#deck .slide--tech .tech-principle');
+  const cards = document.querySelectorAll('#deck .slide--tech .tech-card');
 
   cards.forEach((card, i) => {
     setTimeout(() => card.classList.add('revealed'), 100 + i * 180);
   });
-
-  setTimeout(() => {
-    if (principle) principle.classList.add('revealed');
-  }, 100 + cards.length * 180 + 80);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// SLIDE 6 — ROADMAP CANVAS + REVEALS
+// SLIDE 6 — PERSONAL WORKFLOW
 // ══════════════════════════════════════════════════════════════════
-function initRoadmapCanvas() {
-  const canvas = document.getElementById('roadmapCanvas');
+function initWorkflowCanvas() {
+  const canvas = document.getElementById('workflowCanvas');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
 
-  function draw() {
+  function resize() {
     canvas.width  = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  resize();
+  window.addEventListener('resize', resize);
 
-    const grd = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    grd.addColorStop(0, 'rgba(0,208,220,0.03)');
-    grd.addColorStop(1, 'transparent');
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  function draw() {
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
 
-    // Dotted vertical line (left margin)
-    ctx.strokeStyle = 'rgba(0,208,220,0.15)';
+    const bg = ctx.createRadialGradient(W * 0.45, H * 0.35, 0, W * 0.5, H * 0.55, W * 0.75);
+    bg.addColorStop(0, 'rgba(16, 22, 36, 0.98)');
+    bg.addColorStop(1, 'rgba(5, 8, 16, 1)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    const g1 = ctx.createRadialGradient(W * 0.2, H * 0.85, 0, W * 0.2, H * 0.85, W * 0.45);
+    g1.addColorStop(0, 'rgba(0, 208, 220, 0.055)');
+    g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, W, H);
+
+    const g2 = ctx.createRadialGradient(W * 0.88, H * 0.12, 0, W * 0.88, H * 0.12, W * 0.42);
+    g2.addColorStop(0, 'rgba(255, 107, 26, 0.04)');
+    g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = 'rgba(0, 208, 220, 0.04)';
     ctx.lineWidth = 1;
-    ctx.setLineDash([4, 8]);
-    ctx.beginPath();
-    ctx.moveTo(60, 40);
-    ctx.lineTo(60, canvas.height - 40);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    for (let i = 0; i < 12; i++) {
+      const x = (W * i) / 11;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(W * 0.5, H * 0.55);
+      ctx.stroke();
+    }
+
+    requestAnimationFrame(draw);
   }
   draw();
-  window.addEventListener('resize', draw);
 }
 
-function initRoadmapReveals() {
-  const phases = document.querySelectorAll('#deck .slide--roadmap .phase-block');
-  const note   = document.querySelector('#deck .slide--roadmap .feasibility-note');
-
-  phases.forEach((phase, i) => {
-    setTimeout(() => phase.classList.add('revealed'), 100 + i * 250);
+function initWorkflowReveals() {
+  const slide = document.querySelector('#deck [data-slide="6"].slide--workflow');
+  if (!slide) return;
+  slide.querySelectorAll('[data-wf-reveal]').forEach((el, i) => {
+    setTimeout(() => el.classList.add('revealed'), 90 + i * 110);
   });
-  setTimeout(() => { if (note) note.classList.add('revealed'); }, 100 + phases.length * 250 + 100);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// SLIDE 7 — CLOSING CANVAS
+// SLIDE 9 — CLOSING CANVAS
 // ══════════════════════════════════════════════════════════════════
 function initClosingCanvas() {
   const canvas = document.getElementById('closingCanvas');
